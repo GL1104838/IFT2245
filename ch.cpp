@@ -1,10 +1,13 @@
 /* ch.c.
-auteur: Gabriel Lemyre
-date: 18-01-2018
+auteur: Gabriel Lemyre/Kevin Belisle
+date: 24-01-2018
 problèmes connus:
 
 */
 
+#include  <sys/types.h>
+#include  <sys/wait.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <iostream>
@@ -12,7 +15,6 @@ problèmes connus:
 #include <vector>
 #include <regex>
 #include <fstream>
-#include <dirent.h>
 
 using namespace std;
 
@@ -21,6 +23,7 @@ void readInput(string);
 void readKeywords();
 void readEcho(string);
 void forLoop(string, vector<string>);
+bool execCommand(vector<string>);
 
 //Contains parsed words
 vector<string> stringQueue;
@@ -47,7 +50,54 @@ int main()
 	return 0;
 }
 
-void requestInput(void) {
+bool execCommand(vector<string> args)
+{
+    //Transform vector<string> into const char** and add NULL at the end
+    vector<char*> argc;
+    argc.reserve(args.size()+1);
+    for (int i = 0; i < args.size(); i++)
+    {
+        argc.push_back(const_cast<char*>(args[i].c_str()));
+    }
+    //Args need to end with NULL terminator
+    argc[args.size()] = NULL;
+
+    //str.c_str();
+    id_t pid;
+    siginfo_t state;
+
+    pid = fork();
+    if (pid == 0)
+    {
+        /* Child Process */
+        execvp(argc[0], &argc[0]);
+        exit(1);//if we reach this, an error has occured.
+    }
+    else if (pid > 0)
+    { 
+        /* Parent Process */
+        int result = waitid(P_PID, pid, &state, WEXITED);
+        if (result == 0)
+        {
+            /*Process ended correctly*/
+            return true;
+        }
+        else
+        {
+            /*Process ended incorrectly*/
+            outputString = "Thread hasn't ended properly!";
+            return false;
+        }
+    }
+    else
+    {
+        /* Error while fork()ing */
+        outputString = "Error while forking!\n";
+        return false;
+    }
+}
+
+void requestInput() {
 	//Called after every instruction
 	
 	string inputString;
@@ -92,20 +142,6 @@ void readInput(string inputString) {
 	readKeywords();
 }
 
-void listFiles() {
-	//Lists all the files in the working directory
-	struct dirent* dirent;
-	DIR* currentDirectory = opendir(".");
-	dirent = readdir(currentDirectory);
-
-	while (dirent != NULL) {
-		string dnameString = dirent->d_name;
-		outputString.append(dnameString + "\n");
-		dirent = readdir(currentDirectory);
-	}
-	closedir(currentDirectory);
-}
-
 void forLoop(string iterator, vector<string> loopSet) {
 	if (loopSet.size() > 0) {
 
@@ -131,21 +167,25 @@ void forLoop(string iterator, vector<string> loopSet) {
 void readKeywords() {
 	bool commandFailed = false;
 	//Reads the keywords from the stringQueue
-	for (int i = 0; i < stringQueue.size(); i++) {
+    for (int i = 0; i < stringQueue.size(); i++) {
 
-		string currentKeyword = stringQueue.at(i);
+        string currentKeyword = stringQueue.at(i);
 
-		if (currentKeyword == "echo") {
-			//if the current keyword is echo
+        if (currentKeyword == "echo" ||
+            currentKeyword == "cat" || 
+            currentKeyword == "ls" ||
+            currentKeyword == "man" ||
+            currentKeyword == "tail") {
+            vector<string> args;  
+            args.push_back(stringQueue.at(i));
+			//if the current keyword is a command
 			for (int j = i + 1; j < stringQueue.size(); j++) {
 				if (stringQueue.at(j) == ";" || stringQueue.at(j) == "||" 
 					|| stringQueue.at(j) == "&&") {
-					//stop echo operation
+					//stop operation
 					j = stringQueue.size();
 				}
 				else {
-					//perform echo
-
 					//Variables check
 					currentKeyword = stringQueue.at(j);
 					if (currentKeyword.at(0) == '$') {
@@ -153,18 +193,18 @@ void readKeywords() {
 						   currentKeyword.substr(1, currentKeyword.size() - 1);
 						for (int k = 0; k < variables.size(); k++) {
 							if (stringVariable == variables.at(k).at(0)) {
-								outputString.append(variables.at(k).at(1));
-								outputString.append(" ");
+                                args.push_back(variables.at(k).at(1));
 							}
 						}
 					}
 					else {
-						outputString.append(stringQueue.at(j) + " ");
+                        args.push_back(stringQueue.at(j));
 					}
 					i++;
 				}
 			}
-			outputString.append("\n");
+            commandFailed = execCommand(args);
+            outputString = "\n";
 		}
 		else if (currentKeyword.at(0) == '$') {
 			//if the current keyword is variable command
@@ -245,172 +285,6 @@ void readKeywords() {
 				else {
 					outputString = "Missing 'do' statement\n";
 				}
-			}
-		}
-		else if (currentKeyword == "cat") {
-			//if the current keyword is cat
-
-			for (int j = i + 1; j < stringQueue.size(); j++) {
-				if (stringQueue.at(j) == ";" || stringQueue.at(j) == "||" 
-					|| stringQueue.at(j) == "&&") {
-					//stop cat operation
-					j = stringQueue.size();
-				}
-				else {
-					//perform cat operation
-					ifstream fileReader(stringQueue.at(j));
-					string fileText;
-
-					if (fileReader.is_open()) {
-						while (getline(fileReader, fileText)) {
-							outputString.append(fileText);
-						}
-						fileReader.close();
-					}
-					else {
-						commandFailed = true;
-						outputString = "Error, file not found.";
-						//j = stringQueue.size();
-					}
-					i++;
-				}
-			}
-			outputString.append("\n");
-		}
-		else if (currentKeyword == "ls") {
-			//if the current keyword is ls
-			if (i + 1 < stringQueue.size()) {
-				if (stringQueue.at(i + 1) == ";") {
-					listFiles();
-					i++;
-				}
-			}
-			else {
-				listFiles();
-			}
-		}
-		else if (currentKeyword == "tail") {
-			//if the current keyword is tail
-
-			vector<string> tailVector;
-			int fileCount = 0;
-
-			//Gets the amount of file to read
-			for (int j = i + 1; j < stringQueue.size(); j++) {
-				if (stringQueue.at(j) == ";") {
-					j = stringQueue.size();
-				}
-				else {
-					fileCount++;
-				}
-			}
-
-			for (int j = i + 1; j < stringQueue.size(); j++) {
-				if (stringQueue.at(j) == ";") {
-					//stop tail operation
-					i++;
-					j = stringQueue.size();
-				}
-				else {
-					try {
-						//perform tail operation
-						ifstream fileReader(stringQueue.at(j));
-						string fileText;
-						tailVector.clear();
-
-						if (fileReader.is_open()) {
-							while (getline(fileReader, fileText)) {
-								tailVector.push_back(fileText);
-							}
-							fileReader.close();
-						}
-						else {
-							outputString = 
-								"Erreur, le fichier n'a pas pu être lu.";
-							j = stringQueue.size();
-						}
-
-						//write to the outputString
-						if (fileCount > 1) {
-							outputString.append(
-								"==> " + stringQueue.at(j) + " <==\n");
-						}
-						int loopValue = tailVector.size() - 10;
-						if (loopValue < 0) {
-							loopValue = 0;
-						}
-						for (int k = loopValue; k < tailVector.size(); k++) {
-							//reads the 10 last lines of the file
-							outputString.append(tailVector.at(k) + "\n");
-						}
-
-						i++;
-					}
-					catch (exception e) {
-						outputString = 
-							"Erreur, le fichier n'a pas pu être lu.\n";
-						j = stringQueue.size();
-					}
-				}
-			}
-		}
-		else if (currentKeyword == "man") {
-			if (i + 1 < stringQueue.size()) {
-				if (stringQueue.at(i + 1) == "man") {
-					outputString.append(
-					    "MAN:\n\nman [instruction]\n\nUse with [man], [echo]"
-						", [for], [cat], [ls], [tail], [$], [=], [&&] and"
-						"[||] to learn more about those instructions.\n");
-				}
-				if (stringQueue.at(i + 1) == "echo") {
-					outputString.append(
-						"ECHO:\necho [text]\n Use to write something.\n");
-				}
-				if (stringQueue.at(i + 1) == "for") {
-					outputString.append(
-						"FOR:\n\nfor [iterator] in [val1] [val2] ... ; do "
-						"[instructions] ; done\n\nUse to execute "
-						"a loop.\n");
-				}
-				if (stringQueue.at(i + 1) == "cat") {
-					outputString.append(
-						"CAT:\n\ncat [file1] OR cat [file1] [file2] ...\n\n"
-						"Use to read one or multiple files.\n");
-				}
-				if (stringQueue.at(i + 1) == "ls") {
-					outputString.append("LS:\n\nls\n\n"
-						"Use to show all files in current directory.\n");
-				}
-				if (stringQueue.at(i + 1) == "tail") {
-					outputString.append("TAIL:\n\ntail [file1] OR "
-						"tail [file1] [file2] ...\n\nUse to read the"
-						"ten last lines of one or multiple files.\n");
-				}
-				if (stringQueue.at(i + 1) == "$") {
-					outputString.append("$:\n\n$[var]"
-						"\n\nUse to get the value of a stored variable."
-						"\nUse echo $[var] to show the current value."
-						"\nSet a store variable using [=].\n");
-				}
-				if (stringQueue.at(i + 1) == "=") {
-					outputString.append("=:\n\n [var]=[text]"
-						"\n\nSets [text] to be corresponding to [var] when"
-						" called with $[var].\n");
-				}
-				if (stringQueue.at(i + 1) == "&&") {
-					outputString.append("&&:\n\n[instruction] && [instruction]"
-						"\n\nExecutes the second instruction if the first one "
-						"was sucessful.\n");
-				}
-				if (stringQueue.at(i + 1) == "||") {
-					outputString.append("||:\n\n[instruction] || [instruction]"
-						"\n\nExecutes the second instruction if the first one "
-						"was unsucessful.\n");
-				}
-				i++;
-			}
-			else {
-				outputString = "Missing an instruction.";
 			}
 		}
 		else if (currentKeyword == "||") {
