@@ -1,6 +1,6 @@
 /* ch.c.
 auteur: Gabriel Lemyre/Kevin Belisle
-date: 24-01-2018
+date: 26-01-2018
 problèmes connus:
 
 */
@@ -15,6 +15,10 @@ problèmes connus:
 #include <vector>
 #include <regex>
 #include <fstream>
+#include <errno.h>
+
+/*Un-Comment the line below to run the automated tests!*/
+//#define TEST
 
 using namespace std;
 
@@ -24,6 +28,20 @@ void readKeywords();
 void readEcho(string);
 void forLoop(string, vector<string>);
 bool execCommand(vector<string>);
+
+
+#ifdef TEST
+int main_test();
+void reset_State(bool);
+
+void assert_readInput();
+void assert_readKeywords();
+void assert_Commands();
+
+bool testQueue = false;
+vector<char*> linuxArgs;
+#endif // TEST
+
 
 //Contains parsed words
 vector<string> stringQueue;
@@ -41,6 +59,10 @@ bool invalidInput = false;
 
 int main()
 {
+#ifdef TEST
+    return main_test();
+#endif // TEST
+
 	cout << "%% ";
 
 	/* ¡REMPLIR-ICI! : Lire les commandes de l'utilisateur et les exécuter. */
@@ -53,16 +75,24 @@ int main()
 bool execCommand(vector<string> args)
 {
     //Transform vector<string> into const char** and add NULL at the end
+#ifdef TEST
+    linuxArgs.reserve(args.size() + 1);
+#endif // TEST
     vector<char*> argc;
     argc.reserve(args.size()+1);
     for (int i = 0; i < args.size(); i++)
     {
+#ifdef TEST
+        linuxArgs.push_back(const_cast<char*>(args[i].c_str()));
+#endif // TEST
         argc.push_back(const_cast<char*>(args[i].c_str()));
     }
     //Args need to end with NULL terminator
-    argc[args.size()] = NULL;
+    argc.push_back(NULL);
+#ifdef TEST
+    linuxArgs.push_back(NULL);
+#endif // TEST
 
-    //str.c_str();
     id_t pid;
     siginfo_t state;
 
@@ -80,7 +110,7 @@ bool execCommand(vector<string> args)
         if (result == 0)
         {
             /*Process ended correctly*/
-            return true;
+            return state.si_status == 1;
         }
         else
         {
@@ -110,9 +140,9 @@ void requestInput() {
 		outputString = "Invalid input error.\n";
 	}
 	cout << outputString;
-	outputString = "";
-	stringQueue.clear();
-	invalidInput = false;
+    outputString = "";
+    stringQueue.clear();
+    invalidInput = false;
 	requestInput();
 }
 
@@ -139,6 +169,10 @@ void readInput(string inputString) {
 		//pushes the last word
 		stringQueue.push_back(temp);
 	}
+#ifdef TEST
+    if (testQueue) return;
+#endif // TEST
+
 	readKeywords();
 }
 
@@ -368,3 +402,201 @@ void readKeywords() {
 		}
 	}
 }
+
+#ifdef TEST
+int main_test()
+{
+    assert_readInput();
+
+    assert_readKeywords();
+    assert_Commands();
+    cout << "Press enter to exit...";
+    char c;
+    do c = getchar(); while ((c != '\n') && (c != EOF));
+    return 0;
+}
+void assert_readInput()
+{
+    testQueue = true;
+    cout << "Testing readInput()\n";
+    //Test queue
+    //Check Empty Queue
+    //Expected : queue.size = 0
+    readInput("");
+    if(stringQueue.size() == 0) 
+        cout << "  Empty Queue : Sucess\n";
+    else
+        cout << "  Empty Queue : Failed\n";
+    reset_State(true);
+
+    //Check Queue Size (no trailing spaces)
+    readInput("test test test test test");
+    if (stringQueue.size() == 5)
+        cout << "  No Space Queue Size : Sucess\n";
+    else
+    {
+        cout << "  No Space Queue Size : Failed. Expected : 5, Actual : ";
+        cout << stringQueue.size() << "\n";
+        for (int i = 0; i < stringQueue.size(); i++)
+        {
+            cout << "(" << i + 1 << ")" << stringQueue.at(i) << "/\n";
+        }
+    }
+    reset_State(true);
+
+    //Check Queue Size (with spaces)
+    readInput("test  test   test   ");
+    if (stringQueue.size() == 3)
+        cout << "  Space Queue Size : Sucess\n";
+    else
+    {
+        cout << "  Space Queue Size : Failed. Expected : 3, Actual : ";
+        cout << stringQueue.size() << "\n";
+        for (int i = 0; i < stringQueue.size(); i++)
+        {
+            cout << "  (" << i+1 << ")" << stringQueue.at(i) << "/\n";
+        }
+    }
+    reset_State(true);
+    //Queue Content
+    vector<string> compareQueue;
+    compareQueue.push_back("echo");
+    compareQueue.push_back("word1");
+    compareQueue.push_back("word2");
+    readInput("echo word1 word2");
+    bool assert = true;
+    for (int i = 0; i < stringQueue.size(); i++)
+    {
+        if (stringQueue.at(i) != compareQueue.at(i))
+        {
+            assert = false;
+            cout << "  (" << i + 1 << ") ";
+            cout << "Expected : " << compareQueue.at(i); 
+            cout << ", Actual" << stringQueue.at(i);
+        }
+    }
+    if (assert) cout << "  Queue Content : Sucess\n";
+    else cout << "  Queue Content : Failed\n";
+    reset_State(true);
+    testQueue = false;
+}
+void assert_Commands()
+{
+    //Linux Command
+    string output = "Testing execCommands()\n";
+    //We test if we give the OS the right arguments
+    //We, manually, test if the fork()-ing and exec.
+    //Empty Echo
+    readInput("echo");
+    if (linuxArgs.size() == 2
+        && strcmp("echo", linuxArgs.at(0)) == 0
+        && linuxArgs.at(1) == NULL)
+        output += "  Empty Echo : Sucess.\n";
+    else
+        output += "  Empty Echo : Failed.\n";
+    reset_State(true);
+    //Echo without Variables
+    readInput("echo bonjour");
+    if (linuxArgs.size() == 3
+        && strcmp("echo", linuxArgs.at(0)) == 0
+        && strcmp("bonjour", linuxArgs.at(1)) == 0
+        && linuxArgs.at(2) == NULL)
+        output += "  Echo without Variables : Sucess.\n";
+    else
+        output += "  Echo without Variables : Failed.\n";
+    reset_State(true);
+    //Echo with variables
+    readInput("a=1");
+    reset_State(false);
+    readInput("echo $a");
+    if (linuxArgs.size() == 3
+        && strcmp("echo", linuxArgs.at(0)) == 0
+        && strcmp("1", linuxArgs.at(1)) == 0
+        && linuxArgs.at(2) == NULL)
+        output += "  Echo with Variables : Sucess.\n";
+    else
+        output += "  Echo with Variables : Failed.\n";
+    reset_State(true);
+    //Echo multiples arguments
+    readInput("a=1");
+    reset_State(false);
+    readInput("echo Hello World Test 1234 $a");
+    if (linuxArgs.size() == 7
+        && strcmp("echo", linuxArgs.at(0)) == 0
+        && strcmp("Hello", linuxArgs.at(1)) == 0
+        && strcmp("World", linuxArgs.at(2)) == 0
+        && strcmp("Test", linuxArgs.at(3)) == 0
+        && strcmp("1234", linuxArgs.at(4)) == 0
+        && strcmp("1", linuxArgs.at(5)) == 0
+        && linuxArgs.at(6) == NULL)
+        output += "  Echo multiples arguments : Sucess.\n";
+    else
+        output += "  Echo multiples arguments : Failed.\n";
+    reset_State(true);
+    cout << "\n\n" << output;
+}
+void assert_readKeywords()
+{
+    //Variables
+    cout << "Testing readKeywords()\n";
+    //Set Variable
+    readInput("a=1");
+    reset_State(false);
+    if (variables.size() == 1 
+        && variables.at(0).at(0) == "a" 
+        && variables.at(0).at(1) == "1")
+        cout << "  Set Variable : Sucess.\n";
+    else
+        cout << "  Set Variable : Failed.\n";
+    reset_State(true);
+    //Get Variable
+    readInput("a=test");
+    reset_State(false);
+    readInput("b=1234");
+    reset_State(false);
+    bool assert = false;
+    if (variables.size() == 2)
+    {
+        for (int i = 0; i < 2; i++)
+        {
+            if (variables.at(i).at(0) == "b" 
+                && variables.at(i).at(1) == "1234")
+            {
+                if (assert)
+                    assert = false;
+                else
+                    assert = true;
+            }
+        }
+    }
+    if (assert)
+        cout << "  Get Variable : Sucess.\n";
+    else
+        cout << "  Get Variable : Failed.\n";
+    reset_State(true);
+    //&& and ||
+
+    //for
+    readInput("for i in 1 2 3 ; do echo $i ; echo $i ; done");
+    if (invalidInput)
+        cout << "  For Syntax : Failed.\n";
+    else
+        cout << "  For Syntax : Sucess.\n";
+    reset_State(true);
+    //for Invalid Syntax
+    readInput("for i 1 2 3 ; do a$i=test$i ; done");
+    if (invalidInput)
+        cout << "  For Invalid Syntax : Sucess.\n";
+    else
+        cout << "  For Invalid Syntax : Failed.\n";
+    reset_State(true);
+}
+void reset_State(bool resetVariables)
+{
+    linuxArgs.clear();
+    outputString = "";
+    stringQueue.clear();
+    invalidInput = false;
+    if(resetVariables) variables.clear();
+}
+#endif // TEST
