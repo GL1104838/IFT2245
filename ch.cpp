@@ -258,11 +258,11 @@ void transformAllVariables() {
 					readingVariable = true;
 					currentVariableName += currentKeyword.at(j);
 				}
-				else{
+				else {
 					currentNewWord += currentKeyword.at(j);
 				}
 			}
-			else{
+			else {
 				//There is a dollar sign in the current keyword
 				if (readingVariable) {
 					//Stores variable value and search for new variable
@@ -318,7 +318,7 @@ void readKeywords() {
 					currentKeyword = stringQueue.at(j);
 					if (currentKeyword.at(0) == '$') {
 						string stringVariable =
-							currentKeyword.substr(1, currentKeyword.size() - 1);
+						 currentKeyword.substr(1, currentKeyword.size() - 1);
 						for (int k = 0; k < variables.size(); k++) {
 							if (stringVariable == variables.at(k).at(0)) {
 								args.push_back(variables.at(k).at(1));
