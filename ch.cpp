@@ -675,7 +675,33 @@ void assert_readKeywords()
 	else
 		cout << "  Get Variable : Failed.\n";
 	reset_State(true);
-	//&& and ||
+
+	//&&
+	cout << "\n  AND Output :\n";
+	readInput("echo abc && echo def");
+	cout << "  AND Expected Output:\nabc\ndef\n\n";
+	reset_State(true);
+
+	//||
+	cout << "  OR Output :\n";
+	readInput("echo abc || echo def");
+	cout << "  OR Expected Output:\nabc\n\n";
+	reset_State(true);
+
+	//variable concatenation
+	readInput("a=1");
+	reset_State(false);
+	readInput("echo Hello$a");
+	if (linuxArgs.size() == 3
+		&& strcmp("echo", linuxArgs.at(0)) == 0
+		&& strcmp("Hello1", linuxArgs.at(1)) == 0
+		&& linuxArgs.at(2) == NULL)
+		cout << "  Variable concatenation : Sucess.\n";
+	else
+		cout << "  Variable concatenation : Failed.\n";
+	reset_State(true);
+
+
 
 	//for
 	readInput("for i in 1 2 3 ; do echo $i ; echo $i ; done");
