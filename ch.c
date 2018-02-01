@@ -1,9 +1,8 @@
 /* ch.c
 auteur: Gabriel Lemyre/Kevin Belisle
 date: 26-01-2018
-problèmes connus: 
--Currently can't assign a variable and use it on the same line
--Not formatted for 80 columns
+problÃ¨mes connus:
+-
 */
 
 #define string char*
@@ -20,9 +19,9 @@ void readKeywords(int, int);
 void cleanStringQueue();
 void readEcho(string);
 void forLoop(string, char[MAX_INPUT_SIZE][MAX_INPUT_SIZE], int, int, int, int);
-void transformAllVariables(int, int);
+void setTrueName(int);
 string getVariable(string);
-int countAmountInQueue(string);
+int countAmountInQueue(string, int);
 
 //Contains parsed words
 char stringQueue[MAX_INPUT_SIZE][MAX_INPUT_SIZE] = { { '\0' } };
@@ -50,7 +49,7 @@ int main()
 {
 	printf("%% ");
 
-	/* ¡REMPLIR-ICI! : Lire les commandes de l'utilisateur et les exécuter. */
+	/* Â¡REMPLIR-ICI! : Lire les commandes de l'utilisateur et les exÃ©cuter. */
 	requestInput();
 
 	printf("Bye!\n");
@@ -101,7 +100,8 @@ void readInput(string inputString) {
 			//if the char is not an empty space
 
 			stringQueue[stringQueueCounter][stringQueuePos] = inputString[i];
-			stringOriginalQueue[stringQueueCounter][stringQueuePos] = inputString[i];
+			stringOriginalQueue[stringQueueCounter][stringQueuePos] 
+				= inputString[i];
 			stringQueuePos++;
 		}
 		else {
@@ -112,7 +112,7 @@ void readInput(string inputString) {
 			}
 		}
 	}
-	transformAllVariables(0, stringQueueCounter);
+
 	readKeywords(stringQueueForcedPosition, stringQueueCounter);
 }
 
@@ -158,34 +158,34 @@ void forLoop(string iterator, char loopSet[MAX_INPUT_SIZE][MAX_INPUT_SIZE],
 
 		//backs up the queue before transforming the variables
 		char oldStringQueue[MAX_INPUT_SIZE][MAX_INPUT_SIZE] = { { '\0' } };
-		for (int i = 0; i < stringQueueCounter; i++) {
+		for (int i = 0; i <= stringQueueCounter; i++) {
 			for (int j = 0; j < strlen(stringQueue[i]); j++) {
 				oldStringQueue[i][j] = stringQueue[i][j];
 			}
 		}
 
 		//loads the original queue
-		for (int i = 0; i < stringQueueCounter; i++) {
+		for (int i = 0; i <= stringQueueCounter; i++) {
 			for (int j = 0; j < strlen(stringQueue[i]); j++) {
 				stringQueue[i][j] = stringOriginalQueue[i][j];
 			}
 		}
-
-		transformAllVariables(stringQueueStart, stringQueueEnd);
+		
 		readKeywords(stringQueueStart, stringQueueEnd);
 
 		//erases the current stringQueue
 		cleanStringQueue();
 
 		//loads the backup into stringQueue
-		for (int i = 0; i < stringQueueCounter; i++) {
+		for (int i = 0; i <= stringQueueCounter; i++) {
 			for (int j = 0; j < strlen(oldStringQueue[i]); j++) {
 				stringQueue[i][j] = oldStringQueue[i][j];
 			}
 		}
 
 
-		forLoop(iterator, loopSet, loopSetPosition + 1, loopSetSize, stringQueueStart, stringQueueEnd);
+		forLoop(iterator, loopSet, loopSetPosition + 1
+			, loopSetSize, stringQueueStart, stringQueueEnd);
 	}
 }
 
@@ -199,7 +199,8 @@ string getVariable(string currentVarName) {
 	return "$";
 }
 
-bool isIterator(string iterator, char iteratorList[MAX_INPUT_SIZE][MAX_INPUT_SIZE], int iteratorListCount) {
+bool isIterator(string iterator, 
+	char iteratorList[MAX_INPUT_SIZE][MAX_INPUT_SIZE], int iteratorListCount) {
 	for (int i = 0; i < iteratorListCount; i++) {
 		if (!strcmp(iterator, iteratorList[i])) {
 			return true;
@@ -208,9 +209,10 @@ bool isIterator(string iterator, char iteratorList[MAX_INPUT_SIZE][MAX_INPUT_SIZ
 	return false;
 }
 
-int countAmountInQueue(string word) {
+int countAmountInQueue(string word, int queueStartPos) {
+	//Counts the number of word in the stringQueueCounter from queueStartPos
 	int count = 0;
-	for (int i = 0; i < stringQueueCounter; i++) {
+	for (int i = queueStartPos; i < stringQueueCounter; i++) {
 		if (!strcmp(word, stringQueue[i])) {
 			count++;
 		}
@@ -218,105 +220,73 @@ int countAmountInQueue(string word) {
 	return count;
 }
 
-void transformAllVariables(int startPoint, int endPoint) {
-	//Transform all the variables in the stringQueue to their full string form
+void setTrueName(int stringQueuePos) {
+	//replaces the variable call with the variable
 
-	char iteratorList[MAX_INPUT_SIZE][MAX_INPUT_SIZE] = { { '\0' } };
-	int iteratorListCount = 0;
+	char currentNewWord[MAX_INPUT_SIZE] = { '\0' };
+	int currentNewWordPos = 0;
 
-	for (int i = startPoint; i <= endPoint; i++) {
-		//Loop for the entire string queue
-		char currentNewWord[MAX_INPUT_SIZE] = { '\0' };
-		int currentNewWordPos = 0;
+	char currentVariableName[MAX_INPUT_SIZE] = { '\0' };
+	int currentVariablePos = 0;
 
-		char currentVariableName[MAX_INPUT_SIZE] = { '\0' };
-		int currentVariablePos = 0;
+	bool hasDollarSign = false;
+	bool readingVariable = false;
 
-		bool hasDollarSign = false;
-		bool readingVariable = false;
-
-		if (!strcmp("for", stringQueue[i])) {
-			//excludes the iterator from the variable replacement
-			if (i + 1 < endPoint) {
-				for (int j = 0; j < strlen(stringQueue[i + 1]); j++) {
-					iteratorList[iteratorListCount][j] = stringQueue[i + 1][j];
-				}
-				iteratorListCount++;
-			}
-		}
-
-		for (int j = 0; j < strlen(stringQueue[i]); j++) {
-			//Verify is there is a dollar sign in the current word
-			if (stringQueue[i][j] != '$') {
-				if (hasDollarSign) {
-					readingVariable = true;
-					currentVariableName[currentVariablePos] = stringQueue[i][j];
-					currentVariablePos++;
-				}
-				else {
-					currentNewWord[currentNewWordPos] = stringQueue[i][j];
-					currentNewWordPos++;
-				}
+	for (int j = 0; j < strlen(stringQueue[stringQueuePos]); j++) {
+		//Verify is there is a dollar sign in the current word
+		if (stringQueue[stringQueuePos][j] != '$') {
+			if (hasDollarSign) {
+				readingVariable = true;
+				currentVariableName[currentVariablePos] 
+					= stringQueue[stringQueuePos][j];
+				currentVariablePos++;
 			}
 			else {
-				//There is a dollar sign in the current keyword
-				if (readingVariable) {
-					//Stores variable value and search for new variable
-					if (isIterator(currentVariableName, iteratorList, iteratorListCount)) {
-						currentNewWord[currentNewWordPos] = '$';
-						currentNewWordPos++;
-						for (int k = 0; k < strlen(currentVariableName); k++) {
-							currentNewWord[currentNewWordPos] = currentVariableName[k];
-							currentNewWordPos++;
-						}
-					}
-					else {
-						//if it isn't part of the for loop iterator
-						for (int k = 0; k < strlen(getVariable(currentVariableName)); k++) {
-							currentNewWord[currentNewWordPos] = getVariable(currentVariableName)[k];
-							currentNewWordPos++;
-						}
-					}
-					int currentVarNameLength = strlen(currentVariableName);
-					for (int k = 0; k < currentVarNameLength; k++) {
-						//clean currentVariableName
-						currentVariableName[k] = '\0';
-						currentVariablePos = 0;
-					}
-				}
-				hasDollarSign = true;
-			}
-		}
-		if (readingVariable) {
-			//read the last variable
-			if (isIterator(currentVariableName, iteratorList, iteratorListCount)) {
-				currentNewWord[currentNewWordPos] = '$';
+				currentNewWord[currentNewWordPos] 
+					= stringQueue[stringQueuePos][j];
 				currentNewWordPos++;
-				for (int k = 0; k < strlen(currentVariableName); k++) {
-					currentNewWord[currentNewWordPos] = currentVariableName[k];
-					currentNewWordPos++;
-				}
-			}
-			else {
-				for (int k = 0; k < strlen(getVariable(currentVariableName)); k++) {
-					currentNewWord[currentNewWordPos] = getVariable(currentVariableName)[k];
-					currentNewWordPos++;
-				}
 			}
 		}
-
-		//Assign the currentNewWord to the stringQueue
-		int stringQueueWordLength = strlen(stringQueue[i]);
-
-		for (int j = 0; j < stringQueueWordLength; j++) {
-			//Clean the current string input
-			stringQueue[i][j] = '\0';
+		else {
+			//There is a dollar sign in the current keyword
+			if (readingVariable) {
+				//Stores variable value and search for new variable
+				for (int k = 0; 
+					k < strlen(getVariable(currentVariableName)); k++) {
+					currentNewWord[currentNewWordPos] 
+						= getVariable(currentVariableName)[k];
+					currentNewWordPos++;
+				}
+				int currentVarNameLength = strlen(currentVariableName);
+				for (int k = 0; k < currentVarNameLength; k++) {
+					//clean currentVariableName
+					currentVariableName[k] = '\0';
+					currentVariablePos = 0;
+				}
+			}
+			hasDollarSign = true;
 		}
-
-		int stringCurrentWordLength = strlen(currentNewWord);
-		for (int j = 0; j < stringCurrentWordLength; j++) {
-			stringQueue[i][j] = currentNewWord[j];
+	}
+	if (readingVariable) {
+		//read the last variable
+		for (int k = 0; k < strlen(getVariable(currentVariableName)); k++) {
+			currentNewWord[currentNewWordPos] 
+				= getVariable(currentVariableName)[k];
+			currentNewWordPos++;
 		}
+	}
+
+	//Assign the currentNewWord to the stringQueue
+	int stringQueueWordLength = strlen(stringQueue[stringQueuePos]);
+
+	for (int j = 0; j < stringQueueWordLength; j++) {
+		//Clean the current string input
+		stringQueue[stringQueuePos][j] = '\0';
+	}
+
+	int stringCurrentWordLength = strlen(currentNewWord);
+	for (int j = 0; j < stringCurrentWordLength; j++) {
+		stringQueue[stringQueuePos][j] = currentNewWord[j];
 	}
 }
 
@@ -324,6 +294,8 @@ void readKeywords(int queuePosition, int queueEnd) {
 	bool commandFailed = false;
 	//Reads the keywords from the stringQueue
 	for (int i = queuePosition; i <= queueEnd; i++) {
+
+		setTrueName(i);
 
 		/*if (currentKeyword == "echo" ||
 		currentKeyword == "cat" ||
@@ -360,25 +332,21 @@ void readKeywords(int queuePosition, int queueEnd) {
 		commandFailed = execCommand(args);
 		outputString = "\n";
 		}*/
-		/*else if (currentKeyword[0] == '$') {
-		//if the current keyword is variable command
-		string stringVariable =
-		currentKeyword.substr(1, currentKeyword.size() - 1);
-		for (int j = 0; j < variables.size(); j++) {
-		if (stringVariable == variables.at(j).at(0)) {
-		stringQueue.at(i) = variables.at(j).at(1);
-		i--;
+		if (!strcmp("", stringQueue[i]) 
+			|| !strcmp("$", stringQueue[i])
+			|| !strcmp("done", stringQueue[i])) {
+			//skips the current string iteration
 		}
-		}
-		}*/
-		if (!strcmp("echo", stringQueue[i])) {
+		else if (!strcmp("echo", stringQueue[i])) {
 			//Temporary measure for testing purposes
 			printf("\n");
 			for (int j = i + 1; j <= stringQueueCounter; j++) {
-				if (!strcmp(";", stringQueue[j]) || !strcmp("||", stringQueue[j])
+				setTrueName(j);
+				if (!strcmp(";", stringQueue[j]) 
+					|| !strcmp("||", stringQueue[j])
 					|| !strcmp("&&", stringQueue[j])
 					|| !strcmp("$", stringQueue[j])) {
-					i = j-1;
+					i = j - 1;
 					j = stringQueueCounter;
 				}
 				else {
@@ -397,13 +365,16 @@ void readKeywords(int queuePosition, int queueEnd) {
 			int loopStart = 0;
 			int loopEnd = 0;
 
+			setTrueName(i + 1);
 			if (i + 1 < stringQueueCounter) {
 				//Initialize the iterator
 				iterator = stringQueue[i + 1];
 
+				setTrueName(i + 2);
 				if (i + 2 < stringQueueCounter) {
 					if (!strcmp("in", stringQueue[i + 2])) {
 						for (int j = i + 3; j < stringQueueCounter; j++) {
+							setTrueName(j);
 							if (!strcmp(";", stringQueue[j])) {
 								//end of the loopset
 
@@ -413,7 +384,8 @@ void readKeywords(int queuePosition, int queueEnd) {
 							}
 							else {
 								//This copies the string into the loopSet
-								for (int k = 0; k < strlen(stringQueue[j]); k++) {
+								for (int k = 0; 
+									k < strlen(stringQueue[j]); k++) {
 									loopSet[j - i - 3][k] = stringQueue[j][k];
 								}
 								loopSetCounter++;
@@ -430,21 +402,24 @@ void readKeywords(int queuePosition, int queueEnd) {
 				if (!strcmp("do", stringQueue[stringQueueForcedPosition])) {
 					stringQueueForcedPosition++;
 					loopStart = stringQueueForcedPosition;
-					int forCount = countAmountInQueue("for") - 1;
+					int forCount = countAmountInQueue("for", i) - 1;
 					bool doneFound = false;
 
-					for (int j = stringQueueForcedPosition; j <= stringQueueCounter; j++) {
+					for (int j = stringQueueForcedPosition;
+						j <= stringQueueCounter; j++) {
 						if (!strcmp("done", stringQueue[j])) {
 							if (forCount == 0) {
 								doneFound = true;
 								loopEnd = j - 1;
 								stringQueueForcedPosition = j + 1;
 
-								forLoop(iterator, loopSet, 0, loopSetCounter, loopStart, loopEnd);
+								forLoop(iterator, loopSet, 0, 
+									loopSetCounter, loopStart, loopEnd);
 
 								for (int k = 0; k < variablesCount; k++) {
 									if (!strcmp(variables[0][k], iterator)) {
-										int varKLength = strlen(variables[1][k]);
+										int varKLength 
+											= strlen(variables[1][k]);
 										for (int m = 0; m < varKLength; m++) {
 											variables[1][k][m] = '\0';
 										}
@@ -467,6 +442,7 @@ void readKeywords(int queuePosition, int queueEnd) {
 					outputString = "Missing 'do' statement\n";
 				}
 			}
+			i = stringQueueForcedPosition;
 		}
 
 		else if (!strcmp("||", stringQueue[i])) {
@@ -474,7 +450,9 @@ void readKeywords(int queuePosition, int queueEnd) {
 			if (!commandFailed) {
 				bool interruptedLoop = false;
 				for (int j = i + 1; j < stringQueueCounter; j++) {
-					if (!strcmp(";", stringQueue[j]) || !strcmp("||", stringQueue[j])
+					setTrueName(j);
+					if (!strcmp(";", stringQueue[j]) 
+						|| !strcmp("||", stringQueue[j])
 						|| !strcmp("&&", stringQueue[j])) {
 						i = j - 1;
 
@@ -493,7 +471,9 @@ void readKeywords(int queuePosition, int queueEnd) {
 			if (commandFailed) {
 				bool interruptedLoop = false;
 				for (int j = i + 1; j < stringQueueCounter; j++) {
-					if (!strcmp(";", stringQueue[j]) || !strcmp("||", stringQueue[j])
+					setTrueName(j);
+					if (!strcmp(";", stringQueue[j]) 
+						|| !strcmp("||", stringQueue[j])
 						|| !strcmp("&&", stringQueue[j])) {
 						i = j - 1;
 
@@ -531,7 +511,8 @@ void readKeywords(int queuePosition, int queueEnd) {
 					//Sets the variableName
 					variableName[j] = stringQueue[i][j];
 				}
-				for (int j = equalSignPos + 1; j < strlen(stringQueue[i]); j++) {
+				for (int j = equalSignPos + 1; 
+					j < strlen(stringQueue[i]); j++) {
 					//Sets the variableValue
 					variableValue[j - equalSignPos - 1] = stringQueue[i][j];
 				}
@@ -570,18 +551,8 @@ void readKeywords(int queuePosition, int queueEnd) {
 				i = stringQueueCounter;
 			}
 		}
-		else if (!strcmp("$", stringQueue[i])) {
-			//it is an unassigned variable call
-		}
 		else if (!strcmp(";", stringQueue[i])) {
 			commandFailed = false;
-		}
-
-		if (stringQueueForcedPosition > i
-			&& stringQueueForcedPosition < queueEnd + 1)
-		{
-			//If we need to force a position unto i
-			i = stringQueueForcedPosition;
 		}
 	}
 }
