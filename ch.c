@@ -12,6 +12,9 @@ problèmes connus:
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include  <sys/types.h>
+#include  <sys/wait.h>
+#include <unistd.h>
 
 void requestInput();
 void readInput(string);
@@ -19,6 +22,7 @@ void readKeywords(int, int);
 void cleanStringQueue();
 void readEcho(string);
 void forLoop(string, char[MAX_INPUT_SIZE][MAX_INPUT_SIZE], int, int, int, int);
+bool execCommand(char args);
 void setTrueName(int);
 string getVariable(string);
 int countAmountInQueue(string, int);
@@ -122,6 +126,42 @@ void cleanStringQueue() {
 			stringQueue[i][j] = '\0';
 		}
 	}
+}
+
+bool execCommand(char args)
+{
+    id_t pid;
+    siginfo_t state;
+
+    pid = fork();
+    if (pid == 0)
+    {
+        /* Child Process */
+        execvp(args[0], args);
+        exit(1);//if we reach this, an error has occured.
+    }
+    else if (pid > 0)
+    {
+        /* Parent Process */
+        int result = waitid(P_PID, pid, &state, WEXITED);
+        if (result == 0)
+        {
+            /*Process ended correctly*/
+            return state.si_status == 1;
+        }
+        else
+        {
+            /*Process ended incorrectly*/
+            outputString = "Thread hasn't ended properly!";
+            return false;
+        }
+    }
+    else
+    {
+        /* Error while fork()ing */
+        outputString = "Error while forking!\n";
+        return false;
+    }
 }
 
 void forLoop(string iterator, char loopSet[MAX_INPUT_SIZE][MAX_INPUT_SIZE],
@@ -339,23 +379,25 @@ void readKeywords(int queuePosition, int queueEnd) {
 		}
 		else if (!strcmp("echo", stringQueue[i])) {
 			//Temporary measure for testing purposes
-			printf("\n");
-			for (int j = i + 1; j <= stringQueueCounter; j++) {
-				setTrueName(j);
+            int offset = i;
+            char command[MAX_INPUT_SIZE + 1][MAX_INPUT_SIZE];
+            strcpy(command[0], stringQueue[i]);
+			for (int j = 1; j < stringQueueCounter - offset; j++) {
+				setTrueName(j+i);
 				if (!strcmp(";", stringQueue[j]) 
 					|| !strcmp("||", stringQueue[j])
 					|| !strcmp("&&", stringQueue[j])
 					|| !strcmp("$", stringQueue[j])) {
-					i = j - 1;
-					j = stringQueueCounter;
+                    i += j;
+                    break;
 				}
 				else {
-					printf(stringQueue[j]);
-					printf(" ");
+                    strcpy(command[j], stringQueue[j + offset]);
 					i++;
 				}
 			}
-		}
+            commandFailed = execCommand(command);
+        }
 		else if (!strcmp("for", stringQueue[i])) {
 			//if the current keyword is for
 			char loopSet[MAX_INPUT_SIZE][MAX_INPUT_SIZE] = { { '\0' } };
