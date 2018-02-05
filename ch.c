@@ -15,6 +15,7 @@ problèmes connus:
 #include  <sys/types.h>
 #include  <sys/wait.h>
 #include <unistd.h>
+#include <errno.h>
 
 void requestInput();
 void readInput(string);
@@ -22,7 +23,7 @@ void readKeywords(int, int);
 void cleanStringQueue();
 void readEcho(string);
 void forLoop(string, char[MAX_INPUT_SIZE][MAX_INPUT_SIZE], int, int, int, int);
-bool execCommand(char args);
+bool execCommand(char** args);
 void setTrueName(int);
 string getVariable(string);
 int countAmountInQueue(string, int);
@@ -73,15 +74,12 @@ void requestInput() {
 	for (int i = 0; i < strlen(inputString) - 1; i++) {
 		newInputString[i] = inputString[i];
 	}
-
-	outputString = "\ntemporary output string\n";
-
 	readInput(newInputString);
 
 	if (invalidInput) {
 		outputString = "Invalid input error.\n";
 	}
-	//outputString = "temporary output string\n\n";
+
 	printf(outputString);
 
 	//Variable cleanup
@@ -128,7 +126,7 @@ void cleanStringQueue() {
 	}
 }
 
-bool execCommand(char args)
+bool execCommand(char** args)
 {
     id_t pid;
     siginfo_t state;
@@ -147,7 +145,10 @@ bool execCommand(char args)
         if (result == 0)
         {
             /*Process ended correctly*/
-            return state.si_status == 1;
+            if (state.si_status == 0)
+                return true;
+            else
+                return false;
         }
         else
         {
@@ -334,69 +335,39 @@ void readKeywords(int queuePosition, int queueEnd) {
 	bool commandFailed = false;
 	//Reads the keywords from the stringQueue
 	for (int i = queuePosition; i <= queueEnd; i++) {
-
 		setTrueName(i);
-
-		/*if (currentKeyword == "echo" ||
-		currentKeyword == "cat" ||
-		currentKeyword == "ls" ||
-		currentKeyword == "man" ||
-		currentKeyword == "tail") {
-		vector<string> args;
-		args.push_back(stringQueue.at(i));
-		//if the current keyword is a command
-		for (int j = i + 1; j < stringQueue.size(); j++) {
-		if (stringQueue.at(j) == ";" || stringQueue.at(j) == "||"
-		|| stringQueue.at(j) == "&&") {
-		//stop operation
-		j = stringQueue.size();
-		}
-		else {
-		//Variables check
-		currentKeyword = stringQueue.at(j);
-		if (currentKeyword.at(0) == '$') {
-		string stringVariable =
-		currentKeyword.substr(1, currentKeyword.size() - 1);
-		for (int k = 0; k < variables.size(); k++) {
-		if (stringVariable == variables.at(k).at(0)) {
-		args.push_back(variables.at(k).at(1));
-		}
-		}
-		}
-		else {
-		args.push_back(stringQueue.at(j));
-		}
-		i++;
-		}
-		}
-		commandFailed = execCommand(args);
-		outputString = "\n";
-		}*/
 		if (!strcmp("", stringQueue[i]) 
 			|| !strcmp("$", stringQueue[i])
 			|| !strcmp("done", stringQueue[i])) {
 			//skips the current string iteration
 		}
-		else if (!strcmp("echo", stringQueue[i])) {
-			//Temporary measure for testing purposes
+		else if (!strcmp("echo", stringQueue[i])
+                || !strcmp("ls", stringQueue[i])
+                || !strcmp("man", stringQueue[i])
+                || !strcmp("cat", stringQueue[i])
+                || !strcmp("tail", stringQueue[i])) {
             int offset = i;
-            char command[MAX_INPUT_SIZE + 1][MAX_INPUT_SIZE];
-            strcpy(command[0], stringQueue[i]);
-			for (int j = 1; j < stringQueueCounter - offset; j++) {
-				setTrueName(j+i);
-				if (!strcmp(";", stringQueue[j]) 
-					|| !strcmp("||", stringQueue[j])
-					|| !strcmp("&&", stringQueue[j])
-					|| !strcmp("$", stringQueue[j])) {
-                    i += j;
+            int j = 1;
+            char* command[MAX_INPUT_SIZE + 1];
+            command[0] = stringQueue[i];
+			while(j+offset < stringQueueCounter + 1) {
+				setTrueName(j+offset);
+				if (!strcmp(";", stringQueue[j + offset])
+					|| !strcmp("||", stringQueue[j + offset])
+					|| !strcmp("&&", stringQueue[j + offset])
+					|| !strcmp("$", stringQueue[j + offset])) {
+                    i = offset + j - 1;
                     break;
 				}
 				else {
-                    strcpy(command[j], stringQueue[j + offset]);
+                    command[j] = stringQueue[j + offset];
 					i++;
 				}
+                j++;
 			}
-            commandFailed = execCommand(command);
+            command[j] = NULL;
+            commandFailed = !execCommand(command);
+            outputString = "\n";
         }
 		else if (!strcmp("for", stringQueue[i])) {
 			//if the current keyword is for
