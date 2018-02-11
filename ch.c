@@ -7,12 +7,14 @@ problèmes connus:
 
 #define string char*
 #define MAX_INPUT_SIZE 257 // 255 +  for "\n\0"
+#define MAX_BUFFER_SIZE 1024
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
 #include  <sys/types.h>
+#include <ctype.h>
 #include  <sys/wait.h>
 #include <unistd.h>
 #include <errno.h>
@@ -46,7 +48,7 @@ int variablesCount = 0;
 
 
 //Will be shown to the user
-string outputString;
+string outputString = "";
 
 bool invalidInput = false;
 
@@ -64,13 +66,13 @@ int main()
 void requestInput() {
 	//Called after every instruction
 
-	char inputString[MAX_INPUT_SIZE];
+	char inputString[MAX_BUFFER_SIZE];
 	printf("Shell> ");
 
 	fgets(inputString, sizeof(inputString), stdin);
 
 	//removes the last character from the input string
-	char newInputString[MAX_INPUT_SIZE] = { '\0' };
+	char newInputString[MAX_BUFFER_SIZE] = { '\0' };
 	for (int i = 0; i < strlen(inputString) - 1; i++) {
 		newInputString[i] = inputString[i];
 	}
@@ -98,20 +100,37 @@ void readInput(string inputString) {
 	//Read the words and put them in the stringQueue
 	int stringQueuePos = 0;
 	for (int i = 0; i < strlen(inputString); i++) {
-		if (!(inputString[i] == ' ')) {
-			//if the char is not an empty space
-
-			stringQueue[stringQueueCounter][stringQueuePos] = inputString[i];
-			stringOriginalQueue[stringQueueCounter][stringQueuePos] 
-				= inputString[i];
-			stringQueuePos++;
+		if (inputString[i] == ' ') {
+            //if the char is an empty space
+            if (strlen(stringQueue[stringQueueCounter]) != 0) {
+                stringQueueCounter++;
+                stringQueuePos = 0;
+            }
 		}
+        else if (inputString[i] == ';') {
+            if (stringQueuePos == 0)
+            {
+                //alone or start of a word
+                stringQueue[stringQueueCounter][0] = ';';
+                stringOriginalQueue[stringQueueCounter][0] = ';';
+                stringQueueCounter++;
+                stringQueuePos = 0;
+            }
+            else
+            {
+                //end of a word
+                stringQueue[stringQueueCounter + 1][0] = ';';
+                stringOriginalQueue[stringQueueCounter + 1][0] = ';';
+                stringQueueCounter += 2;
+                stringQueuePos = 0;
+            }
+        }
 		else {
-			//if the char is an empty space
-			if (strlen(stringQueue[stringQueueCounter]) != 0) {
-				stringQueueCounter++;
-				stringQueuePos = 0;
-			}
+            //if the char is not an empty space
+            stringQueue[stringQueueCounter][stringQueuePos] = inputString[i];
+            stringOriginalQueue[stringQueueCounter][stringQueuePos]
+                = inputString[i];
+            stringQueuePos++;
 		}
 	}
 
@@ -263,62 +282,42 @@ int countAmountInQueue(string word, int queueStartPos) {
 
 void setTrueName(int stringQueuePos) {
 	//replaces the variable call with the variable
-
+    int stringQueueWordLength = strlen(stringQueue[stringQueuePos]);
 	char currentNewWord[MAX_INPUT_SIZE] = { '\0' };
 	int currentNewWordPos = 0;
 
-	char currentVariableName[MAX_INPUT_SIZE] = { '\0' };
-	int currentVariablePos = 0;
+    char currentString[MAX_INPUT_SIZE] = { '\0' };
+    int i = 0;
+    while(i < stringQueueWordLength) {
+        if (stringQueue[stringQueuePos][i] == '$') {
+            //found a var, time to replace it
+            i++;
+            char currentVariableName[MAX_INPUT_SIZE] = { '\0' };
+            int currentVariablePos = 0;
+            while (isalpha(stringQueue[stringQueuePos][i])
+                || isdigit(stringQueue[stringQueuePos][i])) {
 
-	bool hasDollarSign = false;
-	bool readingVariable = false;
-
-	for (int j = 0; j < strlen(stringQueue[stringQueuePos]); j++) {
-		//Verify is there is a dollar sign in the current word
-		if (stringQueue[stringQueuePos][j] != '$') {
-			if (hasDollarSign) {
-				readingVariable = true;
-				currentVariableName[currentVariablePos] 
-					= stringQueue[stringQueuePos][j];
-				currentVariablePos++;
-			}
-			else {
-				currentNewWord[currentNewWordPos] 
-					= stringQueue[stringQueuePos][j];
-				currentNewWordPos++;
-			}
-		}
-		else {
-			//There is a dollar sign in the current keyword
-			if (readingVariable) {
-				//Stores variable value and search for new variable
-				for (int k = 0; 
-					k < strlen(getVariable(currentVariableName)); k++) {
-					currentNewWord[currentNewWordPos] 
-						= getVariable(currentVariableName)[k];
-					currentNewWordPos++;
-				}
-				int currentVarNameLength = strlen(currentVariableName);
-				for (int k = 0; k < currentVarNameLength; k++) {
-					//clean currentVariableName
-					currentVariableName[k] = '\0';
-					currentVariablePos = 0;
-				}
-			}
-			hasDollarSign = true;
-		}
-	}
-	if (readingVariable) {
-		//read the last variable
-		for (int k = 0; k < strlen(getVariable(currentVariableName)); k++) {
-			currentNewWord[currentNewWordPos] 
-				= getVariable(currentVariableName)[k];
-			currentNewWordPos++;
-		}
-	}
+                currentVariableName[currentVariablePos]
+                    = stringQueue[stringQueuePos][i];
+                currentVariablePos++;
+                i++;
+            }
+            char* value = getVariable(currentVariableName);
+            for (int j = 0; j < strlen(value); j++) {
+                currentNewWord[currentNewWordPos]
+                    = value[j];
+                currentNewWordPos++;
+            }
+        }
+        else {
+            currentNewWord[currentNewWordPos]
+                = stringQueue[stringQueuePos][i];
+            currentNewWordPos++;
+            i++;
+        }
+    }
 
 	//Assign the currentNewWord to the stringQueue
-	int stringQueueWordLength = strlen(stringQueue[stringQueuePos]);
 
 	for (int j = 0; j < stringQueueWordLength; j++) {
 		//Clean the current string input
@@ -345,7 +344,8 @@ void readKeywords(int queuePosition, int queueEnd) {
                 || !strcmp("ls", stringQueue[i])
                 || !strcmp("man", stringQueue[i])
                 || !strcmp("cat", stringQueue[i])
-                || !strcmp("tail", stringQueue[i])) {
+                || !strcmp("tail", stringQueue[i])
+                || !strcmp("gcc", stringQueue[i])) {
             int offset = i;
             int j = 1;
             char* command[MAX_INPUT_SIZE + 1];
