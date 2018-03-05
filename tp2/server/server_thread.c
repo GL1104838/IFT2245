@@ -72,10 +72,6 @@ st_init ()
   // Attend la connection d'un client et initialise les structures pour
   // l'algorithme du banquier.
 
-  //accept() + loop until connexion found
-  //then st_process_requests()
-
-
   // END TODO
 }
 
