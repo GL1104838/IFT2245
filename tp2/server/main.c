@@ -22,7 +22,7 @@ main (int argc, char *argv[argc + 1])
   st_open_socket (port_number);
 
   // Initialise le serveur.
-  st_init ();
+  st_init (num_server_threads);
 
   // Part les fils d'exécution.
   for (unsigned int i = 0; i < num_server_threads; i++)
@@ -34,9 +34,6 @@ main (int argc, char *argv[argc + 1])
 
   for (unsigned int i = 0; i < num_server_threads; i++)
     pthread_join (st[i].pt_tid, NULL);
-
-  // Signale aux clients de se terminer.
-  st_signal ();
 
   // Affiche le journal.
   st_print_results (stdout, true);

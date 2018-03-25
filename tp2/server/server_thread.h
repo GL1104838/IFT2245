@@ -19,10 +19,17 @@ struct server_thread
   pthread_attr_t pt_attr;
 };
 
+struct bankersArray
+{
+	int * allocatedResources;
+	int * maxResources;
+	bool visited;
+};
+
 void st_open_socket (int port_number);
-void st_init (void);
+void st_init (int);
 void st_process_request (server_thread *, int);
-void st_signal (void);
+bool st_signal (FILE *, server_thread *); //changed st_signal
 void *st_code (void *);
 //void st_create_and_start(st);
 void st_print_results (FILE *, bool);
