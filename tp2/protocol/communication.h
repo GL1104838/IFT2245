@@ -21,6 +21,6 @@ typedef struct communication_data {
 
 void read_communication(FILE *, FILE *, struct communication_data *);
 void write_communication(FILE *, struct communication_data *);
-void setup_communication_data(FILE *, FILE *, struct communication_data *);
+bool setup_communication_data(FILE *, FILE *, struct communication_data *);
 
 #endif

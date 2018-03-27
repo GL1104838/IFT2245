@@ -120,13 +120,10 @@ void endServer() {
 		perror("Client connect() ");
 		exit(1);
 	}
-	else {
-		printf("\n\nServer ending...\n\n");
-	}
 
 	FILE * socket_r = fdopen(socket_fd, "r");
 	FILE * socket_w = fdopen(socket_fd, "w");
-
+	
 	struct communication_data writing_data;
 	struct communication_data reading_data;
 
@@ -134,7 +131,7 @@ void endServer() {
 	writing_data.args_count = 0;
 	write_communication(socket_w, &writing_data);
 	read_communication(socket_r, socket_w, &reading_data);
-
+	
 	fclose(socket_r);
 	fclose(socket_w);
 	close(socket_fd);
@@ -297,6 +294,7 @@ ct_code(void *param)
   if (data_clo_ack.communication_type == ACK) {
 	  pthread_mutex_lock(&mutex);
 	  count_dispatched++;
+	  count--;
 	  pthread_mutex_unlock(&mutex);
 
 	  fclose(socket_r);
@@ -322,7 +320,18 @@ ct_wait_server (client_thread * ct, int nbClients)
 	printf("\n\nct_wait_server flag %d", i);
 	pthread_join(ct[i].pt_tid, NULL);
   }
-  endServer();
+  int client_count;
+  pthread_mutex_lock(&mutex);
+  client_count = count;
+  pthread_mutex_unlock(&mutex);
+  if(client_count == 0)
+  {
+    printf("\n\nServer successful for %i", ct->id);
+    endServer();
+  }
+  else {
+	  printf("\n\nTrying to close server while client(s) are still open", ct->id);
+  }
 }
 
 
@@ -380,7 +389,10 @@ st_print_results (FILE * fd, bool verbose)
 
 //Reads server replies
 void read_communication(FILE * socket_r, FILE * socket_w, struct communication_data * data) {
-	setup_communication_data(socket_r, socket_w, data);
+	if(!setup_communication_data(socket_r, socket_w, data))
+	{
+		//Parse Error
+	}
 }
 
 //Writes to server
@@ -423,17 +435,18 @@ void write_beg(FILE * socket_w, int arg) {
 }
 
 //Set the data up for lecture
-void setup_communication_data(FILE * socket_r, FILE * socket_w, struct communication_data * data) {
+bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communication_data * data) {
 
-	char comm_type[5];
+	char comm_type[4];
 	//Reads the communication_type
 
-	fscanf(socket_r, "%s", comm_type);
+	fscanf(socket_r, "%4s", comm_type);
 	fgetc(socket_r);
 
 	if (strcmp(comm_type, "ACK") == 0) {
 		data->communication_type = ACK;
 		data->args_count = 0;
+		return true;
 	}
 	else if (strcmp(comm_type, "ERR") == 0) {
 		data->communication_type = ERR;
@@ -442,11 +455,14 @@ void setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 		printf("\n\n");
 		printf(fgets(buffer, 256, socket_r));
 		printf("\n\n");
+		return true;
 	}
 	else if (strcmp(comm_type, "WAIT") == 0) {
 		data->communication_type = WAIT;
 		data->args = malloc(sizeof(int));
 		fscanf(socket_r, "%d", &data->args[0]);
 		data->args_count = 1;
+		return true;
 	}
+	return false;
 }
