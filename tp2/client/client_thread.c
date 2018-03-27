@@ -68,7 +68,7 @@ void initializeServer() {
 		exit(1);
 	}
 	else {
-		printf("Server initialized");
+		printf("Connected to server");
 	}
 
 	FILE * socket_r = fdopen(socket_fd, "r");
@@ -81,13 +81,21 @@ void initializeServer() {
 	if (beg_data.communication_type == ACK) {
 		printf("\n\nACKNOWLEDGED\n\n");
 	}
-	
+	else {
+		//Erreur on BEG
+		free(beg_data.args);
+		beg_data.args = NULL;
+		exit(1);
+	}
+	free(beg_data.args);
+	beg_data.args = NULL;
 	printf("\n\nflag before PRO\n\n");
 	//PRO
 	struct communication_data pro_data_w;
 	struct communication_data pro_data_r;
 	pro_data_w.communication_type = PRO;
 	pro_data_w.args = malloc(num_resources * sizeof(int));
+	if (pro_data_w.args == NULL) exit(-1);
 	for (int i = 0; i < num_resources; i++) {
 		pro_data_w.args[i] = provisioned_resources[i];
 	}
@@ -98,7 +106,18 @@ void initializeServer() {
 	if (pro_data_r.communication_type == ACK) {
 		printf("\n\nACKNOWLEDGED\n\n");
 	}
-
+	else {
+      //Erreur on PRO
+	  free(pro_data_w.args);
+	  pro_data_w.args = NULL;
+	  free(pro_data_r.args);
+	  pro_data_r.args = NULL;
+	  exit(1);
+	}
+	free(pro_data_w.args);
+	pro_data_w.args = NULL;
+	free(pro_data_r.args);
+	pro_data_r.args = NULL;
 	fclose(socket_r);
 	fclose(socket_w);
 	close(socket_fd);
@@ -129,9 +148,17 @@ void endServer() {
 
 	writing_data.communication_type = END;
 	writing_data.args_count = 0;
+	writing_data.args = NULL;
 	write_communication(socket_w, &writing_data);
 	read_communication(socket_r, socket_w, &reading_data);
 	
+    if (reading_data.communication_type != ACK) {
+		printf("Erreur onServerEnd");
+	}
+
+	free(writing_data.args);
+	free(reading_data.args);
+
 	fclose(socket_r);
 	fclose(socket_w);
 	close(socket_fd);
@@ -155,7 +182,8 @@ send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FIL
   //REQ
   writing_data.communication_type = REQ;
   writing_data.args_count = num_resources + 1;
-  writing_data.args = malloc(writing_data.args_count * sizeof(int));
+  writing_data.args = calloc(writing_data.args_count, sizeof(int));
+  if (writing_data.args == NULL) exit(-1);
   writing_data.args[0] = client_id;
   if (request_id == num_request_per_client-1) {
 	  //SEND EMPTYING REQUEST
@@ -183,11 +211,15 @@ send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FIL
   printf("Sending comm_type %d, args[%d, %d, %d, %d, %d, %d]\n\n", writing_data.communication_type, writing_data.args[0], writing_data.args[1], writing_data.args[2], writing_data.args[3], writing_data.args[4], writing_data.args[5]);
   write_communication(socket_w, &writing_data);
 
+  free(writing_data.args);
+  writing_data.args = NULL;
+
   pthread_mutex_lock(&mutex);
   request_sent++;
   pthread_mutex_unlock(&mutex);
 
   read_communication(socket_r, socket_w, &reading_data);
+  int result = 0;
   if (reading_data.communication_type == ACK) {
 	  printf("\n\nACKNOWLEDGED\n\n");
 	  pthread_mutex_lock(&mutex);
@@ -203,9 +235,10 @@ send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FIL
 	  pthread_mutex_lock(&mutex);
 	  count_on_wait++;
 	  pthread_mutex_unlock(&mutex);
-	  return reading_data.args[0];
+	  result = reading_data.args[0];
   }
-  return 0;
+  free(reading_data.args);
+  return result;
 }
 
 
@@ -245,6 +278,7 @@ ct_code(void *param)
 	comm_data.communication_type = INI;
 	comm_data.args_count = num_resources+1;
 	comm_data.args = malloc(comm_data.args_count * sizeof(int));
+	if (comm_data.args == NULL) exit(-1);
 	comm_data.args[0] = ct->id;
 	//Initialize resource allocation (INI)
 	for (int i = 0; i < num_resources; i++) {
@@ -253,7 +287,16 @@ ct_code(void *param)
 	write_communication(socket_w, &comm_data);
 	struct communication_data ini_data_r;
 	read_communication(socket_r, socket_w, &ini_data_r);
-	
+	if (ini_data_r.communication_type != ACK) {
+	  printf("Erreur lors de l'init du client");
+      free(comm_data.args);
+	  free(ini_data_r.args);
+	  fclose(socket_r);
+	  fclose(socket_w);
+	  return;
+	}
+	free(comm_data.args);
+	free(ini_data_r.args);
   // TP2 TODO:END
 	
   for (unsigned int request_id = 0; request_id < num_request_per_client;
@@ -287,8 +330,11 @@ ct_code(void *param)
   data_clo.communication_type = CLO;
   data_clo.args_count = 1;
   data_clo.args = malloc(sizeof(int));
+  if (data_clo.args == NULL) exit(-1);
   data_clo.args[0] = ct->id;
   write_communication(socket_w, &data_clo);
+  
+  free(data_clo.args);
 
   read_communication(socket_r, socket_w, &data_clo_ack);
   if (data_clo_ack.communication_type == ACK) {
@@ -302,6 +348,11 @@ ct_code(void *param)
 
 	  pthread_exit(NULL);
   }
+  else {
+    printf("Erreur lors de la fermeture du client");
+  }
+
+  free(data_clo_ack.args);
 
   return NULL;
 }
@@ -328,6 +379,10 @@ ct_wait_server (client_thread * ct, int nbClients)
   {
     printf("\n\nServer successful for %i", ct->id);
     endServer();
+	free(ct->maxResources);
+	free(ct->allocatedResources);
+	ct->maxResources = NULL;
+	ct->allocatedResources = NULL;
   }
   else {
 	  printf("\n\nTrying to close server while client(s) are still open", ct->id);
@@ -341,7 +396,9 @@ ct_init (client_thread * ct)
   ct->id = count++;
   //Added to ct
   ct->maxResources = malloc(num_resources * sizeof(int));
+  if (ct->maxResources == NULL) exit(-1);
   ct->allocatedResources = malloc(num_resources * sizeof(int));
+  if (ct->allocatedResources == NULL) exit(-1);
   for (int i = 0; i < num_resources; i++) {
 	  ct->maxResources[i] = (random() % (provisioned_resources[i] + 1) - 1);
 	  if (ct->maxResources[i] < 0) {
@@ -392,6 +449,7 @@ void read_communication(FILE * socket_r, FILE * socket_w, struct communication_d
 	if(!setup_communication_data(socket_r, socket_w, data))
 	{
 		//Parse Error
+		printf("Error onServerRequestParsing");
 	}
 }
 
@@ -446,6 +504,7 @@ bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 	if (strcmp(comm_type, "ACK") == 0) {
 		data->communication_type = ACK;
 		data->args_count = 0;
+		data->args = NULL;
 		return true;
 	}
 	else if (strcmp(comm_type, "ERR") == 0) {
@@ -455,11 +514,13 @@ bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 		printf("\n\n");
 		printf(fgets(buffer, 256, socket_r));
 		printf("\n\n");
+		data->args = NULL;
 		return true;
 	}
 	else if (strcmp(comm_type, "WAIT") == 0) {
 		data->communication_type = WAIT;
 		data->args = malloc(sizeof(int));
+		if (data->args == NULL) exit(-1);
 		fscanf(socket_r, "%d", &data->args[0]);
 		data->args_count = 1;
 		return true;

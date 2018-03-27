@@ -58,7 +58,7 @@ unsigned int clients_ended = 0;
 //Mutex
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
-//Added int
+// Nombre de threads Server
 int nbServerThreads = 0;
 
 //Banker's Algorithm data
@@ -78,12 +78,14 @@ st_init(int threadsCount)
 	// Handle interrupt
 	signal(SIGINT, &sigint_handler);
 
+	accepting_connections = false;
+
 	// Initialise le nombre de clients connecté.
 	nb_registered_clients = 0;
 
 	nbServerThreads = threadsCount;
 	bankersArray = malloc(threadsCount * sizeof(struct bankersArray));
-
+	if (bankersArray == NULL) exit(-1);
 	// Attend la connection d'un client et initialise les structures pour
 	// l'algorithme du banquier.
 	struct sockaddr_in addr;
@@ -100,35 +102,72 @@ st_init(int threadsCount)
 	FILE * socket_w = fdopen(socket, "w");
 
 	//BEG
-	read_communication(socket_r, socket_w, &reading_data);
-	while (reading_data.communication_type != BEG) {
-		read_communication(socket_r, socket_w, &reading_data);
-	}
-	if (reading_data.communication_type == BEG) {
-		printf("\n\n---BEG---\n\n");
-	}
+	do {
+	  read_communication(socket_r, socket_w, &reading_data);
+	  if(reading_data.args_count != 1 || reading_data.args[0] < 1) {
+		//Invalid Argument
+	    free(reading_data.args);
+	    reading_data.args = NULL;
+		reading_data.args_count = 0;
+		reading_data.communication_type = ERR;
+		write_errorMessage(socket_w, "Must BEG for at least one resource");
+		printf("Erreur onServerInit BEG\n\n");
+		exit(-1);
+	  }
+	} while (reading_data.communication_type != BEG);
+	printf("\n\n---BEG---\n\n");
 	writing_data.communication_type = ACK;
+	writing_data.args = NULL;
+	writing_data.args_count = 0;
 	write_communication(socket_w, &writing_data);
 	bankersAlgoNbResources = reading_data.args[0];
+    free(reading_data.args);
+	reading_data.args = NULL;
+	free(writing_data.args);
+	reading_data.args = NULL;
+	
 	//PRO
-	read_communication(socket_r, socket_w, &reading_data);
-	while (reading_data.communication_type != PRO) {
-		read_communication(socket_r, socket_w, &reading_data);
-	}
-	if (reading_data.communication_type == PRO) {
-		printf("\n\n---PRO---\n\n");
-	}
-	printf("\n\nPRO");
-	bankersAlgoAvailable = calloc(bankersAlgoNbResources, sizeof(int));
-	bankersAlgoMaxResources = calloc(bankersAlgoNbResources, sizeof(int));
-	for (int i = 0; i < reading_data.args_count; i++) {
-		printf(" %d", reading_data.args[i]);
-		bankersAlgoMaxResources[i] = reading_data.args[i];
-		bankersAlgoAvailable[i] = reading_data.args[i];
-	}
-	printf("\n\n");
+	do {
+	  read_communication(socket_r, socket_w, &reading_data);
+    printf("\n\n---PRO---\n\n");
+	  bankersAlgoAvailable = calloc(bankersAlgoNbResources, sizeof(int));
+	  if (bankersAlgoAvailable == NULL) exit(-1);
+	  bankersAlgoMaxResources = calloc(bankersAlgoNbResources, sizeof(int));
+	  if (bankersAlgoMaxResources == NULL) exit(-1);
+	  for (int i = 0; i < reading_data.args_count; i++) {
+		  if (reading_data.args[i] < 1) {
+			  //Invalid Argument
+			  free(bankersAlgoAvailable);
+			  free(bankersAlgoMaxResources);
+			  free(reading_data.args);
+			  bankersAlgoAvailable = NULL;
+			  bankersAlgoMaxResources = NULL;
+			  reading_data.args = NULL;
+			  reading_data.args_count = 0;
+			  reading_data.communication_type = ERR;
+			  write_errorMessage(socket_w, 
+			  "Must provide at least one of each resource");
+			  printf("Erreur onServerInit PRO\n\n");
+			  exit(-1);
+		  }
+		  printf(" %d", reading_data.args[i]);
+		  bankersAlgoMaxResources[i] = reading_data.args[i];
+		  bankersAlgoAvailable[i] = reading_data.args[i];
+	  }
+	  printf("\n\n");
+	} while (reading_data.communication_type != PRO);
+
 	writing_data.communication_type = ACK;
+	writing_data.args = NULL;
+	writing_data.args_count = 0;
 	write_communication(socket_w, &writing_data);
+	
+	free(reading_data.args);
+	reading_data.args = NULL;
+	free(writing_data.args);
+	reading_data.args = NULL;
+
+  accepting_connections = true;
 
 	fclose(socket_r);
 	fclose(socket_w);
@@ -138,115 +177,153 @@ st_init(int threadsCount)
 void
 st_process_requests (server_thread * st, int socket_fd)
 {
+
   FILE *socket_r = fdopen (socket_fd, "r");
   FILE *socket_w = fdopen (socket_fd, "w");
 
-  bankersArray[st->id].allocatedResources = calloc(bankersAlgoNbResources, sizeof(int));
-  bankersArray[st->id].maxResources = calloc(bankersAlgoNbResources, sizeof(int));
-
   bool isInitialize = false;
+  bool looping = true;
   struct communication_data reading_data;
   struct communication_data writing_data;
   
-  while (true) {
+  reading_data.args = NULL;
+	writing_data.args = NULL;
+
+  if (bankersAlgoNbResources < 1 || 
+      bankersAlgoMaxResources == NULL ||
+	    bankersAlgoAvailable == NULL) {
+	  //ERROR onServerStart
+    write_errorMessage(socket_w,"Server not initialized yet!");
+	  looping = false;
+  }
+  
+  bankersArray[st->id].allocatedResources = calloc(bankersAlgoNbResources, sizeof(int));
+  if (bankersArray[st->id].allocatedResources == NULL) exit(-1);
+  bankersArray[st->id].maxResources = calloc(bankersAlgoNbResources, sizeof(int));
+  if (bankersArray[st->id].maxResources == NULL) exit(-1);
+
+  while (looping) {
 
 	  read_communication(socket_r, socket_w, &reading_data);
 
 	  if (reading_data.communication_type == INI) {
-		  for (int i = 0; i < bankersAlgoNbResources; i++) {
+		  bool clientExist = false;
+			pthread_mutex_lock(&mutex);
+		  for (int i = 0; i < nbServerThreads; i++) {
+			  if (bankersArray[i].clientID == reading_data.args[0]) {
+			    clientExist = true;
+			    break;
+			  }
+		  }
+			pthread_mutex_unlock(&mutex);
+		  if (clientExist) {
+				write_errorMessage(socket_w, "Client already exists");
+				looping = false;
+			}
+			else {
+		    for (int i = 0; i < bankersAlgoNbResources; i++) {
 	        printf(" %d", reading_data.args[i+1]);
-	        bankersArray[st->id].allocatedResources[i] = reading_data.args[i+1];
-	        bankersArray[st->id].maxResources[i] = bankersAlgoMaxResources[i];
-          }
-		  printf("\n\n");
-		  pthread_mutex_lock(&mutex);
-		  nb_registered_clients++;
-		  pthread_mutex_unlock(&mutex);
-		  writing_data.communication_type = ACK;
-		  writing_data.args_count = 0;
-          write_communication(socket_w, &writing_data);
-		  isInitialize = true;
+	        bankersArray[st->id].allocatedResources[i] = 0;
+	        bankersArray[st->id].maxResources[i] = reading_data.args[i+1];
+        }
+        bankersArray[st->id].clientID = reading_data.args[0];
+		    printf("\n\n");
+				pthread_mutex_lock(&mutex);
+		    nb_registered_clients++;
+				pthread_mutex_unlock(&mutex);
+		    writing_data.communication_type = ACK;
+		    writing_data.args = NULL;
+		    writing_data.args_count = 0;
+        write_communication(socket_w, &writing_data);
+		    isInitialize = true;
+		  }
 	  }
 	  else if (reading_data.communication_type == REQ) {
+			pthread_mutex_lock(&mutex);
+			request_processed++;
+			pthread_mutex_unlock(&mutex);
 		  if (!isInitialize) {
 			  printf("\n\nClient not initialized ID : %i\n\n", st->id);
 			  write_errorMessage(socket_w, "Client not initialized");
-			  //free(reading_data.args);
-			  //reading_data.args = NULL;
-			  continue;
-		  }	
-		  printf("\n\n---REQ---\n\n");
+				pthread_mutex_lock(&mutex);
+				count_invalid++;
+				pthread_mutex_unlock(&mutex);
+		  }
+		  else {	
+		    printf("\n\n---REQ---\n\n");
 	      for (int i = 0; i < reading_data.args_count; i++)
 	      {
-		    printf("%d,",reading_data.args[i]);
+		      printf("%d,",reading_data.args[i]);
 	      }
-		  printf("\n\n");
-		  //****************************************************************************************
-		  //REQ
-		  //Ce qu'il reste à faire:
-		  //Vérifier si la requête est valide
-		  //Ajuster les envoi err/ack/wait
-		  //Effectuer la gestion des ressources du banquier
-		  //J'utilise les variables globales pour la structure générale du banquier afin qu'ils soient partagées entre tous les threads
-		  //et un bankersArray[i] où i = st->id selon le thread
-		  bool requestAccepted = true;
-		  bool requestProcessed = false;
+		    printf("\n\n");
+		    //****************************************************************************************
+		    //REQ
+		    //Ce qu'il reste à faire:
+		    //Vérifier si la requête est valide
+		    //Ajuster les envoi err/ack/wait
+		    //Effectuer la gestion des ressources du banquier
+		    //J'utilise les variables globales pour la structure générale du banquier afin qu'ils soient partagées entre tous les threads
+		    //et un bankersArray[i] où i = st->id selon le thread
+		    bool requestAccepted = true;
 
-		  int * neededResources = calloc(bankersAlgoNbResources, sizeof(int));
-		  //NegativeData sont les resources négatives(à libérer) et Positive celles à allouer
-		  int * negativeData = calloc(bankersAlgoNbResources, sizeof(int));
-		  int * positiveData = calloc(bankersAlgoNbResources, sizeof(int));
+		    int * neededResources = calloc(bankersAlgoNbResources, sizeof(int));
+		    if (neededResources == NULL) exit(-1);
+		    //NegativeData sont les resources négatives(à libérer) et Positive celles à allouer
+		    // TODO : BANKER
+		    int * negativeData = calloc(bankersAlgoNbResources, sizeof(int));
+		    int * positiveData = calloc(bankersAlgoNbResources, sizeof(int));
 		  
-		  for (int i = 0; i < bankersAlgoNbResources; i++) {
-			  if(reading_data.args[i+1] > 0){
-				  positiveData[i] = reading_data.args[i + 1];
-			  }
-			  else {
-				  negativeData[i] = reading_data.args[i + 1];
-			  }
-			  neededResources[i] = bankersArray[st->id].maxResources[i] - bankersArray[st->id].allocatedResources[i];
-		  }
+		    for (int i = 0; i < bankersAlgoNbResources; i++) {
+			    if(reading_data.args[i+1] > 0){
+				    positiveData[i] = reading_data.args[i + 1];
+			    }
+			    else {
+				    negativeData[i] = reading_data.args[i + 1];
+			    }
+			    neededResources[i] = bankersArray[st->id].maxResources[i] - bankersArray[st->id].allocatedResources[i];
+		    }
 
-		  if (requestAccepted) {
+		    int* tmpAvail = calloc(bankersAlgoNbResources,sizeof(int));
+		    if(tmpAvail == NULL) exit(-1);
+		    memcpy(tmpAvail, bankersAlgoAvailable, bankersAlgoNbResources * sizeof(int));
+		    requestAccepted = banker(neededResources,tmpAvail);
+		    free(tmpAvail);
 
-			  pthread_mutex_lock(&mutex);
+		    if (requestAccepted) {
 
-			  for (int i = 0; i < bankersAlgoNbResources; i++) {
-				  //Reallocate negative data
-				  bankersArray[st->id].allocatedResources[i] -= negativeData[i];
-				  bankersAlgoAvailable[i] += negativeData[i];
-			  }
+			    pthread_mutex_lock(&mutex);
+
+			    for (int i = 0; i < bankersAlgoNbResources; i++) {
+				    //Reallocate negative data
+				    bankersArray[st->id].allocatedResources[i] -= negativeData[i];
+				    bankersAlgoAvailable[i] += negativeData[i];
+			    }
 			  
 			 
-			  //*Counts request as accepted and send ACK message back to client
-			  count_accepted++;
-			  writing_data.communication_type = ACK;
-			  write_communication(socket_w, &writing_data);
-			  //*End
-
-			  requestProcessed = true;
+			    //*Counts request as accepted and send ACK message back to client
+			    writing_data.communication_type = ACK;
+			    writing_data.args = NULL;
+			    writing_data.args_count = 0;
+			    write_communication(socket_w, &writing_data);
+			    //*End
+			    count_accepted++;
+			    pthread_mutex_unlock(&mutex);
+		    }
+		    else {
 			  
-			  pthread_mutex_unlock(&mutex);
-		  }
-		  else {
-			  //request is waiting [Il faut probablement changer ça]
-			  writing_data.communication_type = WAIT;
-			  writing_data.args_count = 1;
-			  writing_data.args = malloc(sizeof(int));
-			  writing_data.args[0] = 1;
-			  write_communication(socket_w, &writing_data);
+			    writing_data.communication_type = WAIT;
+			    writing_data.args_count = 1;
+			    writing_data.args = malloc(sizeof(int));
+			    if (writing_data.args == NULL) exit(-1);
+			    writing_data.args[0] = 1;
+			    write_communication(socket_w, &writing_data);
 
-			  pthread_mutex_lock(&mutex);
-			  count_invalid++;
-			  pthread_mutex_unlock(&mutex);
+			    pthread_mutex_lock(&mutex);
+			    count_wait++;
+			    pthread_mutex_unlock(&mutex);
+		    }
+		    //**************************************************************************************************
 		  }
-		  if (requestProcessed) {
-			  //request was processed [Il faut probablement changer ça]
-			  pthread_mutex_lock(&mutex);
-			  request_processed++;
-			  pthread_mutex_unlock(&mutex);
-		  }
-		  //**************************************************************************************************
 	  }
 	  else if (reading_data.communication_type == CLO) {
 		  //CLO
@@ -254,25 +331,44 @@ st_process_requests (server_thread * st, int socket_fd)
 			  //Exit while
 			  pthread_mutex_lock(&mutex);
 			  clients_ended++;
+			  free(bankersArray[st->id].allocatedResources);
+			  free(bankersArray[st->id].maxResources);
+			  bankersArray[st->id].allocatedResources = NULL;
+			  bankersArray[st->id].maxResources = NULL;
+			  bankersArray[st->id].visited = false;
+			  bankersArray[st->id].clientID = -1;
 			  pthread_mutex_unlock(&mutex);
-			  break;
+			  looping = false;
 		  }
 		  else {
 			  write_errorMessage(socket_w, "La commande CLO a été appelée avant la libération de toutes les ressources.");
-		  }
+		    pthread_mutex_lock(&mutex);
+				count_invalid++;
+				pthread_mutex_unlock(&mutex);
+			}
 	  }
 	  else if (reading_data.communication_type == END) {
-		printf("\n\nEnd received\n\n");
-		//End server if the received communication is END
-		pthread_mutex_lock(&mutex);
-		//TODO : Check if resources are all back
-		accepting_connections = false;
-		pthread_mutex_unlock(&mutex);
-		writing_data.communication_type = ACK;
-		writing_data.args_count = 0;
-		write_communication(socket_w, &writing_data);
-		break;
+		  printf("\n\nEnd received\n\n");
+		  //End server if the received communication is END
+		  pthread_mutex_lock(&mutex);
+		  if(nb_registered_clients != 0) {
+				write_errorMessage(socket_w, "Client(s) are still connected");
+		  } 
+		  else {
+		    accepting_connections = false;
+		    pthread_mutex_unlock(&mutex);
+		    writing_data.communication_type = ACK;
+		    writing_data.args_count = 0;
+		    writing_data.args = NULL;
+		    write_communication(socket_w, &writing_data);
+		    looping = false;
+		  }  
 	  }
+
+	  free(reading_data.args);
+	  reading_data.args = NULL;
+	  free(writing_data.args);
+	  reading_data.args = NULL;
   }
 
   fclose (socket_r);
@@ -288,7 +384,7 @@ st_signal (FILE * socket_w, server_thread * st)
 
 	//Verifies if closing properly
 	/*for (int i = 0; i < bankersAlgoNbResources; i++) {
-		if (!(bankersArray[st->id].allocatedResources[i] == 0)) {
+		if (bankersArray[st->id].allocatedResources[i] != 0) {
 			cleanExit = false;
 		}
 	}*/
@@ -297,9 +393,11 @@ st_signal (FILE * socket_w, server_thread * st)
 		pthread_mutex_lock(&mutex);
 		nb_registered_clients--;
 		count_dispatched++;
-		pthread_mutex_unlock(&mutex);
 		writing_data.communication_type = ACK;
+		writing_data.args = NULL;
+		writing_data.args_count = 0;
 		write_communication(socket_w, &writing_data);
+		pthread_mutex_unlock(&mutex);
 	}
 
 	return cleanExit;
@@ -329,7 +427,7 @@ st_code (void *param)
 
   int thread_socket_fd = -1;
   bankersArray[st->id].visited = false;
-
+  bankersArray[st->id].clientID = -1;
   printf("\n\nServer thread %d\n\n", st->id);
 
   // Boucle de traitement des requêtes.
@@ -416,9 +514,12 @@ void read_communication(FILE * socket_r, FILE * socket_w, struct communication_d
 	bool result = setup_communication_data(socket_r, socket_w, data);
 	if (!result)
 	{
-		printf("\n\n Setup ERROR, result : %i, comm_type : %i\n\n", result, data->communication_type);
+		printf("\n\n Invalid Request, result : %i, comm_type : %i\n\n", 
+		  result, data->communication_type);
 		data->args_count = 0;
 		data->communication_type = ERR;
+		free(data->args);
+		data->args = NULL;
 		pthread_mutex_lock(&mutex);
 		count_invalid++;
 		pthread_mutex_unlock(&mutex);
@@ -454,22 +555,25 @@ bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 	if (strcmp(comm_type, "CLO") == 0) {
 		data->communication_type = CLO;
 		data->args_count = 0;
+		data->args = NULL;
 		return (fgetc(socket_r) != '\n');
 	}
 	if (strcmp(comm_type, "BEG") == 0) {
 		 if(fgetc(socket_r) != ' ') return false;
 		data->communication_type = BEG;
 		data->args = malloc(sizeof(int));
+		if (data->args == NULL) exit(-1);
 		int count = -1;
 		fscanf(socket_r, "%d%n", &data->args[0], &count);
 		data->args_count = 1;
-		return (count != -1) && (fgetc(socket_r) == '\n');
+		return (count != -1)&&(fgetc(socket_r) == '\n');
 	}
 	else if (strcmp(comm_type, "PRO") == 0) {
 		if(fgetc(socket_r) != ' ') return false;
 		data->communication_type = PRO;
 		data->args_count = bankersAlgoNbResources;
-		data->args = malloc(data->args_count * sizeof(int));
+		data->args = calloc(bankersAlgoNbResources,sizeof(int));
+		if (data->args == NULL) exit(-1);
 		int i = 0;
 		while (i < data->args_count) {
 			int count = -1;
@@ -484,12 +588,14 @@ bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 	else if (strcmp(comm_type, "END") == 0) {
 		data->communication_type = END;
 		data->args_count = 0;
+		data->args = NULL;
 		return (fgetc(socket_r) == '\n');
 	}
 	else if (strcmp(comm_type, "INI") == 0) {
 		data->communication_type = INI;
 		data->args_count = bankersAlgoNbResources + 1;
-		data->args = malloc(data->args_count * sizeof(int));
+		data->args = calloc(data->args_count,sizeof(int));
+		if (data->args == NULL) exit(-1);
 		int i = 0;
 		while (i < data->args_count) {
 			int count = -1;
@@ -504,7 +610,8 @@ bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 	else if (strcmp(comm_type, "REQ") == 0) {
 		data->communication_type = REQ;
 		data->args_count = bankersAlgoNbResources + 1;
-		data->args = malloc(data->args_count * sizeof(int));
+		data->args = calloc(data->args_count,sizeof(int));
+		if (data->args == NULL) exit(-1);
 		int i = 0;
 		while (i < data->args_count) {
 			int count = -1;
@@ -520,6 +627,7 @@ bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 		data->communication_type = CLO;
 		data->args_count = 1;
 		data->args = malloc(sizeof(int));
+		if (data->args == NULL) exit(-1);
 		int count = -1;
 		fscanf(socket_r, "%d\n%n", &data->args[0], &count);
 		data->args_count = 1;
@@ -529,4 +637,21 @@ bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 		//Invalid Command
 		return false;
 	}
+}
+
+/*Banker algorithm*/
+bool banker(int* needed, int* available) {
+  /**/
+  return true;
+}
+
+/*Utility function
+	compare needed and available 1D array
+*/
+bool isAvailable(int* needed, int* available) {
+  for(int i = 0; i < bankersAlgoNbResources; i++) {
+	if(needed[i] > available[i])
+	  return false;
+  }
+  return true;
 }
