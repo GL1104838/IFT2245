@@ -184,27 +184,33 @@ send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FIL
   writing_data.args_count = num_resources + 1;
   writing_data.args = calloc(writing_data.args_count, sizeof(int));
   if (writing_data.args == NULL) exit(-1);
+  int* requestArray = calloc(num_resources,  sizeof(int));
+  if (requestArray == NULL) exit(-1);
   writing_data.args[0] = client_id;
   if (request_id == num_request_per_client-1) {
 	  //SEND EMPTYING REQUEST
 	  for (int i = 1; i < writing_data.args_count; i++) {
-		  writing_data.args[i] = ct->allocatedResources[i] * -1;
-		  if (writing_data.args[i] > 0) {
-			  writing_data.args[i] = 0;
-		  }
-		  ct->allocatedResources[i] = 0;
+		  writing_data.args[i] = ct->allocatedResources[i-1] * -1;
+		  requestArray[i - 1] = writing_data.args[i];
 	  }
   }
   else {
 	  for (int i = 1; i < writing_data.args_count; i++) {
 		  //SENDING REQUEST
-
-		  writing_data.args[i] = (random() % (ct->maxResources[i] + 1)) - ct->allocatedResources[i] - 1;
-
-		  if (-writing_data.args[i] > ct->maxResources[i]) {
-			  writing_data.args[i] = writing_data.args[i] - 1;
+	      if ((random() % 2) == 0) {
+            //Alloc
+			int needed = ct->maxResources[i-1] - ct->allocatedResources[i-1];
+            writing_data.args[i] = (random() % (needed + 1));
 		  }
-		  ct->allocatedResources[i] += writing_data.args[i];
+		  else {
+            //Dealloc
+			int value = random() % (ct->allocatedResources[i-1] + 1);
+            writing_data.args[i] = value * -1;
+			if (ct->allocatedResources[i - 1] + writing_data.args[i] < 0){
+				writing_data.args[i] = 0;
+			}
+		  } 
+		  requestArray[i - 1] = writing_data.args[i];
 	  }
   }
 
@@ -222,6 +228,9 @@ send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FIL
   int result = 0;
   if (reading_data.communication_type == ACK) {
 	  printf("\n\nACKNOWLEDGED\n\n");
+	  for (int i = 0; i < num_resources; i++) {
+		  ct->allocatedResources[i] += requestArray[i];
+	  }
 	  pthread_mutex_lock(&mutex);
 	  count_accepted++;
 	  pthread_mutex_unlock(&mutex);
@@ -237,6 +246,7 @@ send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FIL
 	  pthread_mutex_unlock(&mutex);
 	  result = reading_data.args[0];
   }
+  free(requestArray);
   free(reading_data.args);
   return result;
 }
@@ -293,7 +303,7 @@ ct_code(void *param)
 	  free(ini_data_r.args);
 	  fclose(socket_r);
 	  fclose(socket_w);
-	  return;
+	  return NULL;
 	}
 	free(comm_data.args);
 	free(ini_data_r.args);
@@ -333,8 +343,6 @@ ct_code(void *param)
   if (data_clo.args == NULL) exit(-1);
   data_clo.args[0] = ct->id;
   write_communication(socket_w, &data_clo);
-  
-  free(data_clo.args);
 
   read_communication(socket_r, socket_w, &data_clo_ack);
   if (data_clo_ack.communication_type == ACK) {
@@ -345,15 +353,17 @@ ct_code(void *param)
 
 	  fclose(socket_r);
 	  fclose(socket_w);
-
-	  pthread_exit(NULL);
   }
   else {
     printf("Erreur lors de la fermeture du client");
   }
 
   free(data_clo_ack.args);
-
+  free(data_clo.args);
+  free(ct->maxResources);
+  free(ct->allocatedResources);
+  
+  pthread_exit(NULL);
   return NULL;
 }
 
@@ -378,14 +388,10 @@ ct_wait_server (client_thread * ct, int nbClients)
   if(client_count == 0)
   {
     printf("\n\nServer successful for %i", ct->id);
-    endServer();
-	free(ct->maxResources);
-	free(ct->allocatedResources);
-	ct->maxResources = NULL;
-	ct->allocatedResources = NULL;
+	endServer();
   }
   else {
-	  printf("\n\nTrying to close server while client(s) are still open", ct->id);
+	  printf("\n\nTrying to close server while client(s) are still open");
   }
 }
 
@@ -512,7 +518,7 @@ bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 		data->args_count = 0;
 		char buffer[256];
 		printf("\n\n");
-		printf(fgets(buffer, 256, socket_r));
+		printf("%s", fgets(buffer, 256, socket_r));
 		printf("\n\n");
 		data->args = NULL;
 		return true;

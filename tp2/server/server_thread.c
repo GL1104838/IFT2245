@@ -101,6 +101,10 @@ st_init(int threadsCount)
 	FILE * socket_r = fdopen(socket, "r");
 	FILE * socket_w = fdopen(socket, "w");
 
+	//Set ClientID to -1
+	for (int i = 0; i < nbServerThreads; i++) {
+		bankersArray[i].clientID = -1;
+	}
 	//BEG
 	do {
 	  read_communication(socket_r, socket_w, &reading_data);
@@ -196,11 +200,12 @@ st_process_requests (server_thread * st, int socket_fd)
     write_errorMessage(socket_w,"Server not initialized yet!");
 	  looping = false;
   }
-  
-  bankersArray[st->id].allocatedResources = calloc(bankersAlgoNbResources, sizeof(int));
-  if (bankersArray[st->id].allocatedResources == NULL) exit(-1);
-  bankersArray[st->id].maxResources = calloc(bankersAlgoNbResources, sizeof(int));
-  if (bankersArray[st->id].maxResources == NULL) exit(-1);
+  else {
+		bankersArray[st->id].allocatedResources = calloc(bankersAlgoNbResources, sizeof(int));
+  	if (bankersArray[st->id].allocatedResources == NULL) exit(-1);
+  	bankersArray[st->id].maxResources = calloc(bankersAlgoNbResources, sizeof(int));
+  	if (bankersArray[st->id].maxResources == NULL) exit(-1);
+	}
 
   while (looping) {
 
@@ -253,7 +258,7 @@ st_process_requests (server_thread * st, int socket_fd)
 		    printf("\n\n---REQ---\n\n");
 	      for (int i = 0; i < reading_data.args_count; i++)
 	      {
-		      printf("%d,",reading_data.args[i]);
+		      printf("%d ",reading_data.args[i]);
 	      }
 		    printf("\n\n");
 		    //****************************************************************************************
@@ -265,71 +270,95 @@ st_process_requests (server_thread * st, int socket_fd)
 		    //J'utilise les variables globales pour la structure générale du banquier afin qu'ils soient partagées entre tous les threads
 		    //et un bankersArray[i] où i = st->id selon le thread
 		    bool requestAccepted = true;
+				bool valid = true;
 
-		    int * neededResources = calloc(bankersAlgoNbResources, sizeof(int));
-		    if (neededResources == NULL) exit(-1);
-		    //NegativeData sont les resources négatives(à libérer) et Positive celles à allouer
-		    // TODO : BANKER
-		    int * negativeData = calloc(bankersAlgoNbResources, sizeof(int));
-		    int * positiveData = calloc(bankersAlgoNbResources, sizeof(int));
-		  
-		    for (int i = 0; i < bankersAlgoNbResources; i++) {
-			    if(reading_data.args[i+1] > 0){
-				    positiveData[i] = reading_data.args[i + 1];
-			    }
-			    else {
-				    negativeData[i] = reading_data.args[i + 1];
-			    }
-			    neededResources[i] = bankersArray[st->id].maxResources[i] - bankersArray[st->id].allocatedResources[i];
-		    }
-
-		    int* tmpAvail = calloc(bankersAlgoNbResources,sizeof(int));
+		    int * needed = calloc(nbServerThreads * bankersAlgoNbResources, sizeof(int));
+		    if (needed == NULL) exit(-1);
+				int* tmpAvail = calloc(bankersAlgoNbResources,sizeof(int));
 		    if(tmpAvail == NULL) exit(-1);
-		    memcpy(tmpAvail, bankersAlgoAvailable, bankersAlgoNbResources * sizeof(int));
-		    requestAccepted = banker(neededResources,tmpAvail);
-		    free(tmpAvail);
-
-		    if (requestAccepted) {
-
-			    pthread_mutex_lock(&mutex);
-
-			    for (int i = 0; i < bankersAlgoNbResources; i++) {
-				    //Reallocate negative data
-				    bankersArray[st->id].allocatedResources[i] -= negativeData[i];
-				    bankersAlgoAvailable[i] += negativeData[i];
-			    }
-			  
-			 
-			    //*Counts request as accepted and send ACK message back to client
-			    writing_data.communication_type = ACK;
-			    writing_data.args = NULL;
-			    writing_data.args_count = 0;
-			    write_communication(socket_w, &writing_data);
-			    //*End
-			    count_accepted++;
-			    pthread_mutex_unlock(&mutex);
+        int* tmpAlloc = calloc(bankersAlgoNbResources, sizeof(int));
+        if(tmpAlloc == NULL) exit(-1);
+				
+				pthread_mutex_lock(&mutex);
+				memcpy(tmpAvail, bankersAlgoAvailable, 
+				        bankersAlgoNbResources * sizeof(int));
+		    for (int i = 0; i < bankersAlgoNbResources; i++) {
+					int value = bankersArray[st->id].allocatedResources[i] + 
+					            reading_data.args[i+1];
+          if (value > bankersArray[st->id].maxResources[i] || 
+					    value < 0) {
+						  //ERROR  : trying to allocate over max or deallocate under 0
+              valid = false;
+							break;
+					}
+					tmpAvail[i] -= reading_data.args[i+1];
+					tmpAlloc[i] = value;
 		    }
-		    else {
-			  
-			    writing_data.communication_type = WAIT;
-			    writing_data.args_count = 1;
-			    writing_data.args = malloc(sizeof(int));
-			    if (writing_data.args == NULL) exit(-1);
-			    writing_data.args[0] = 1;
-			    write_communication(socket_w, &writing_data);
-
-			    pthread_mutex_lock(&mutex);
-			    count_wait++;
-			    pthread_mutex_unlock(&mutex);
-		    }
+				if (valid) {
+        	for (int i = 0; i < nbServerThreads; i++) {
+						if (bankersArray[i].clientID == -1) {
+							//No client assigned, skip
+							continue;
+						}
+						bankersArray[i].visited = false;
+						for (int j = 0; j < bankersAlgoNbResources; j++) {
+							int index = i * bankersAlgoNbResources + j;
+							if (i == st->id) {
+								int tmp = bankersArray[st->id].allocatedResources[j];
+								bankersArray[st->id].allocatedResources[j] = tmpAlloc[j];
+								tmpAlloc[j] = tmp;
+							}
+              needed[index] = bankersArray[i].maxResources[j] - 
+							                bankersArray[i].allocatedResources[j];							
+						}
+					}
+		    	requestAccepted = banker(needed,tmpAvail);	
+		    	if (requestAccepted) {	 
+			    	//*Counts request as accepted and send ACK message back to client
+						for (int i = 0; i < bankersAlgoNbResources; i++) {
+							bankersAlgoAvailable[i] -= reading_data.args[i+1];
+						}
+			    	writing_data.communication_type = ACK;
+			    	writing_data.args = NULL;
+			    	writing_data.args_count = 0;
+			    	write_communication(socket_w, &writing_data);
+			    	//*End
+			    	count_accepted++;
+		    	}
+		    	else {
+						for (int i = 0; i < bankersAlgoNbResources; i++) {
+							//Revert Request
+							bankersArray[st->id].allocatedResources[i] = tmpAlloc[i];
+						}
+						count_wait++;
+			    	writing_data.communication_type = WAIT;
+			    	writing_data.args_count = 1;
+			      writing_data.args = malloc(sizeof(int));
+			      if (writing_data.args == NULL) exit(-1);
+			      writing_data.args[0] = 1;
+			      write_communication(socket_w, &writing_data);
+		      }
+			  }
+				else {
+          //Validation
+					count_invalid++;
+					write_errorMessage(socket_w, "Invalid Request");
+				}
 		    //**************************************************************************************************
-		  }
+				for (int i = 0; i < nbServerThreads; i++) {
+					bankersArray[i].visited = false;
+				}
+				pthread_mutex_unlock(&mutex);
+				free(tmpAlloc);
+				free(tmpAvail);
+			  free(needed);
+			}
 	  }
 	  else if (reading_data.communication_type == CLO) {
 		  //CLO
+			pthread_mutex_lock(&mutex);
 		  if (st_signal(socket_w, st)) {
 			  //Exit while
-			  pthread_mutex_lock(&mutex);
 			  clients_ended++;
 			  free(bankersArray[st->id].allocatedResources);
 			  free(bankersArray[st->id].maxResources);
@@ -342,7 +371,6 @@ st_process_requests (server_thread * st, int socket_fd)
 		  }
 		  else {
 			  write_errorMessage(socket_w, "La commande CLO a été appelée avant la libération de toutes les ressources.");
-		    pthread_mutex_lock(&mutex);
 				count_invalid++;
 				pthread_mutex_unlock(&mutex);
 			}
@@ -353,14 +381,21 @@ st_process_requests (server_thread * st, int socket_fd)
 		  pthread_mutex_lock(&mutex);
 		  if(nb_registered_clients != 0) {
 				write_errorMessage(socket_w, "Client(s) are still connected");
+				pthread_mutex_unlock(&mutex);
 		  } 
 		  else {
 		    accepting_connections = false;
-		    pthread_mutex_unlock(&mutex);
 		    writing_data.communication_type = ACK;
 		    writing_data.args_count = 0;
 		    writing_data.args = NULL;
 		    write_communication(socket_w, &writing_data);
+				//TODO : Release bankersArray and Bankers related stuff
+				free(bankersArray[st->id].allocatedResources);
+				free(bankersArray[st->id].maxResources);
+				free(bankersArray);
+				free(bankersAlgoMaxResources);
+				free(bankersAlgoAvailable);
+				pthread_mutex_unlock(&mutex);
 		    looping = false;
 		  }  
 	  }
@@ -368,7 +403,7 @@ st_process_requests (server_thread * st, int socket_fd)
 	  free(reading_data.args);
 	  reading_data.args = NULL;
 	  free(writing_data.args);
-	  reading_data.args = NULL;
+	  writing_data.args = NULL;
   }
 
   fclose (socket_r);
@@ -382,22 +417,20 @@ st_signal (FILE * socket_w, server_thread * st)
 	bool cleanExit = true;
 	struct communication_data writing_data;
 
-	//Verifies if closing properly
-	/*for (int i = 0; i < bankersAlgoNbResources; i++) {
+	for (int i = 0; i < bankersAlgoNbResources; i++) {
 		if (bankersArray[st->id].allocatedResources[i] != 0) {
 			cleanExit = false;
+			break;
 		}
-	}*/
+	}
 
 	if (cleanExit) {
-		pthread_mutex_lock(&mutex);
 		nb_registered_clients--;
 		count_dispatched++;
 		writing_data.communication_type = ACK;
 		writing_data.args = NULL;
 		writing_data.args_count = 0;
 		write_communication(socket_w, &writing_data);
-		pthread_mutex_unlock(&mutex);
 	}
 
 	return cleanExit;
@@ -639,10 +672,41 @@ bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communica
 	}
 }
 
-/*Banker algorithm*/
+/*
+  Banker algorithm
+
+  needed : 1D array of size nbServerThreads (or nbClients) * nbResources
+  avaialble : 1D array of size nbResources
+	return true if stable, otherwise false
+*/
 bool banker(int* needed, int* available) {
-  /**/
-  return true;
+  bool found;
+	do {
+    found = false;
+		for (int i = 0; i < nbServerThreads; i++) {
+			if (bankersArray[i].clientID == -1 ||
+			    bankersArray[i].visited)
+				continue;//If empty or visted, skip
+			
+			if (isAvailable(&needed[i*bankersAlgoNbResources], available)) {
+				found = true;
+				bankersArray[i].visited = true;
+				for (int k = 0; k < bankersAlgoNbResources; k++) {
+					available[k] += bankersArray[i].allocatedResources[k];
+				}
+			}
+		}
+	} while(found);
+
+	//Check if all picked
+	bool result = true;
+	for (int i = 0; nbServerThreads; i++) {
+		if (bankersArray[i].clientID == -1)
+		  continue; //if empty, skip
+    result = bankersArray[i].visited;
+		if (!result) break;
+	}
+  return result;
 }
 
 /*Utility function

@@ -27,6 +27,7 @@ struct bankersArray
 	bool visited;
 };
 
+void write_errorMessage(FILE *, char *);
 void st_open_socket (int port_number);
 void st_init (int);
 void st_process_request (server_thread *, int);

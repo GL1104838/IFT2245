@@ -48,5 +48,8 @@ main(int argc, char *argv[])
   st_print_results (fp, false);
   fclose(fp);
 
+  free(client_threads);
+	free(provisioned_resources);
+	
   return EXIT_SUCCESS;
 }

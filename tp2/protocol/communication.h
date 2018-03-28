@@ -11,13 +11,13 @@ typedef enum communication_type {
 	ACK,
 	ERR,
 	WAIT
-};
+}communication_type;
 
 typedef struct communication_data {
 	enum communication_type communication_type;
 	int * args;
 	unsigned int args_count;
-};
+}communication_data;
 
 void read_communication(FILE *, FILE *, struct communication_data *);
 void write_communication(FILE *, struct communication_data *);

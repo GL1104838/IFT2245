@@ -32,6 +32,7 @@ struct client_thread
   pthread_attr_t pt_attr;
 };
 
+void write_beg(FILE*, int);
 void initializeServer();
 void ct_init (client_thread *);
 void ct_create_and_start (client_thread *);
