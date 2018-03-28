@@ -37,7 +37,8 @@ unsigned int count_on_wait = 0;
 // Nombre de requête refusée (REFUSE reçus en réponse à REQ)
 unsigned int count_invalid = 0;
 
-// Nombre de client qui se sont terminés correctement (ACC reçu en réponse à END)
+// Nombre de client qui se sont terminés correctement 
+// (ACC reçu en réponse à END)
 unsigned int count_dispatched = 0;
 
 // Nombre total de requêtes envoyées.
@@ -171,7 +172,8 @@ void endServer() {
 // Assurez-vous que la dernière requête d'un client libère toute les ressources
 // qu'il a jusqu'alors accumulées.
 int
-send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FILE * socket_w, client_thread * ct)
+send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, 
+              FILE * socket_w, client_thread * ct)
 {
 	struct communication_data reading_data;
 	struct communication_data writing_data;
@@ -214,7 +216,10 @@ send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FIL
 	  }
   }
 
-  printf("Sending comm_type %d, args[%d, %d, %d, %d, %d, %d]\n\n", writing_data.communication_type, writing_data.args[0], writing_data.args[1], writing_data.args[2], writing_data.args[3], writing_data.args[4], writing_data.args[5]);
+  printf("Sending comm_type %d, args[%d, %d, %d, %d, %d, %d]\n\n", 
+          writing_data.communication_type, writing_data.args[0], 
+		  writing_data.args[1], writing_data.args[2], writing_data.args[3], 
+		  writing_data.args[4], writing_data.args[5]);
   write_communication(socket_w, &writing_data);
 
   free(writing_data.args);
@@ -318,7 +323,8 @@ ct_code(void *param)
     // le protocole d'envoi de requête.
 
 	  //modified send_request to return the wait seconds value
-	  int sleepValue = send_request(ct->id, request_id, socket_fd, socket_r, socket_w, ct);
+	  int sleepValue = send_request(ct->id, request_id, socket_fd, socket_r, 
+	                                socket_w, ct);
 	  if (sleepValue != 0) {
 		  request_id--;
 		  sleep(sleepValue);
@@ -411,7 +417,8 @@ ct_init (client_thread * ct)
 		  ct->maxResources[i] = 0;
 	  }
 	  ct->allocatedResources[i] = 0;
-	  printf("\n\nmaxR: %d, proR %d\n\n", ct->maxResources[i], provisioned_resources[i]);
+	  printf("\n\nmaxR: %d, proR %d\n\n", ct->maxResources[i], 
+	         provisioned_resources[i]);
   }
 }
 
@@ -451,7 +458,8 @@ st_print_results (FILE * fd, bool verbose)
 /***** MESSAGE COMMUNICATION PART *****/
 
 //Reads server replies
-void read_communication(FILE * socket_r, FILE * socket_w, struct communication_data * data) {
+void read_communication(FILE * socket_r, FILE * socket_w, 
+                        struct communication_data * data) {
 	if(!setup_communication_data(socket_r, socket_w, data))
 	{
 		//Parse Error
@@ -499,7 +507,8 @@ void write_beg(FILE * socket_w, int arg) {
 }
 
 //Set the data up for lecture
-bool setup_communication_data(FILE * socket_r, FILE * socket_w, struct communication_data * data) {
+bool setup_communication_data(FILE * socket_r, FILE * socket_w, 
+                              struct communication_data * data) {
 
 	char comm_type[4];
 	//Reads the communication_type
