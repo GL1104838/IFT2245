@@ -37,7 +37,8 @@ unsigned int count_on_wait = 0;
 // Nombre de requête refusée (REFUSE reçus en réponse à REQ)
 unsigned int count_invalid = 0;
 
-// Nombre de client qui se sont terminés correctement (ACC reçu en réponse à END)
+// Nombre de client qui se sont terminés correctement 
+// (ACC reçu en réponse à END)
 unsigned int count_dispatched = 0;
 
 // Nombre total de requêtes envoyées.
@@ -68,7 +69,7 @@ void initializeServer() {
 		exit(1);
 	}
 	else {
-		printf("Server initialized");
+		printf("Connected to server");
 	}
 
 	FILE * socket_r = fdopen(socket_fd, "r");
@@ -81,13 +82,21 @@ void initializeServer() {
 	if (beg_data.communication_type == ACK) {
 		printf("\n\nACKNOWLEDGED\n\n");
 	}
-	
+	else {
+		//Erreur on BEG
+		free(beg_data.args);
+		beg_data.args = NULL;
+		exit(1);
+	}
+	free(beg_data.args);
+	beg_data.args = NULL;
 	printf("\n\nflag before PRO\n\n");
 	//PRO
 	struct communication_data pro_data_w;
 	struct communication_data pro_data_r;
 	pro_data_w.communication_type = PRO;
 	pro_data_w.args = malloc(num_resources * sizeof(int));
+	if (pro_data_w.args == NULL) exit(-1);
 	for (int i = 0; i < num_resources; i++) {
 		pro_data_w.args[i] = provisioned_resources[i];
 	}
@@ -98,7 +107,18 @@ void initializeServer() {
 	if (pro_data_r.communication_type == ACK) {
 		printf("\n\nACKNOWLEDGED\n\n");
 	}
-
+	else {
+      //Erreur on PRO
+	  free(pro_data_w.args);
+	  pro_data_w.args = NULL;
+	  free(pro_data_r.args);
+	  pro_data_r.args = NULL;
+	  exit(1);
+	}
+	free(pro_data_w.args);
+	pro_data_w.args = NULL;
+	free(pro_data_r.args);
+	pro_data_r.args = NULL;
 	fclose(socket_r);
 	fclose(socket_w);
 	close(socket_fd);
@@ -120,20 +140,25 @@ void endServer() {
 		perror("Client connect() ");
 		exit(1);
 	}
-	else {
-		printf("\n\nServer ending...\n\n");
-	}
 
 	FILE * socket_r = fdopen(socket_fd, "r");
 	FILE * socket_w = fdopen(socket_fd, "w");
-
+	
 	struct communication_data writing_data;
 	struct communication_data reading_data;
 
 	writing_data.communication_type = END;
 	writing_data.args_count = 0;
+	writing_data.args = NULL;
 	write_communication(socket_w, &writing_data);
 	read_communication(socket_r, socket_w, &reading_data);
+	
+    if (reading_data.communication_type != ACK) {
+		printf("Erreur onServerEnd");
+	}
+
+	free(writing_data.args);
+	free(reading_data.args);
 
 	fclose(socket_r);
 	fclose(socket_w);
@@ -147,7 +172,8 @@ void endServer() {
 // Assurez-vous que la dernière requête d'un client libère toute les ressources
 // qu'il a jusqu'alors accumulées.
 int
-send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FILE * socket_w, client_thread * ct)
+send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, 
+              FILE * socket_w, client_thread * ct)
 {
 	struct communication_data reading_data;
 	struct communication_data writing_data;
@@ -158,41 +184,58 @@ send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FIL
   //REQ
   writing_data.communication_type = REQ;
   writing_data.args_count = num_resources + 1;
-  writing_data.args = malloc(writing_data.args_count * sizeof(int));
+  writing_data.args = calloc(writing_data.args_count, sizeof(int));
+  if (writing_data.args == NULL) exit(-1);
+  int* requestArray = calloc(num_resources,  sizeof(int));
+  if (requestArray == NULL) exit(-1);
   writing_data.args[0] = client_id;
   if (request_id == num_request_per_client-1) {
 	  //SEND EMPTYING REQUEST
 	  for (int i = 1; i < writing_data.args_count; i++) {
-		  writing_data.args[i] = ct->allocatedResources[i] * -1;
-		  if (writing_data.args[i] > 0) {
-			  writing_data.args[i] = 0;
-		  }
-		  ct->allocatedResources[i] = 0;
+		  writing_data.args[i] = ct->allocatedResources[i-1] * -1;
+		  requestArray[i - 1] = writing_data.args[i];
 	  }
   }
   else {
 	  for (int i = 1; i < writing_data.args_count; i++) {
 		  //SENDING REQUEST
-
-		  writing_data.args[i] = (random() % (ct->maxResources[i] + 1)) - ct->allocatedResources[i] - 1;
-
-		  if (-writing_data.args[i] > ct->maxResources[i]) {
-			  writing_data.args[i] = writing_data.args[i] - 1;
+	      if ((random() % 2) == 0) {
+            //Alloc
+			int needed = ct->maxResources[i-1] - ct->allocatedResources[i-1];
+            writing_data.args[i] = (random() % (needed + 1));
 		  }
-		  ct->allocatedResources[i] += writing_data.args[i];
+		  else {
+            //Dealloc
+			int value = random() % (ct->allocatedResources[i-1] + 1);
+            writing_data.args[i] = value * -1;
+			if (ct->allocatedResources[i - 1] + writing_data.args[i] < 0){
+				writing_data.args[i] = 0;
+			}
+		  } 
+		  requestArray[i - 1] = writing_data.args[i];
 	  }
   }
 
-  printf("Sending comm_type %d, args[%d, %d, %d, %d, %d, %d]\n\n", writing_data.communication_type, writing_data.args[0], writing_data.args[1], writing_data.args[2], writing_data.args[3], writing_data.args[4], writing_data.args[5]);
+  printf("Sending comm_type %d, args[%d, %d, %d, %d, %d, %d]\n\n", 
+          writing_data.communication_type, writing_data.args[0], 
+		  writing_data.args[1], writing_data.args[2], writing_data.args[3], 
+		  writing_data.args[4], writing_data.args[5]);
   write_communication(socket_w, &writing_data);
+
+  free(writing_data.args);
+  writing_data.args = NULL;
 
   pthread_mutex_lock(&mutex);
   request_sent++;
   pthread_mutex_unlock(&mutex);
 
   read_communication(socket_r, socket_w, &reading_data);
+  int result = 0;
   if (reading_data.communication_type == ACK) {
 	  printf("\n\nACKNOWLEDGED\n\n");
+	  for (int i = 0; i < num_resources; i++) {
+		  ct->allocatedResources[i] += requestArray[i];
+	  }
 	  pthread_mutex_lock(&mutex);
 	  count_accepted++;
 	  pthread_mutex_unlock(&mutex);
@@ -206,9 +249,11 @@ send_request (int client_id, int request_id, int socket_fd, FILE * socket_r, FIL
 	  pthread_mutex_lock(&mutex);
 	  count_on_wait++;
 	  pthread_mutex_unlock(&mutex);
-	  return reading_data.args[0];
+	  result = reading_data.args[0];
   }
-  return 0;
+  free(requestArray);
+  free(reading_data.args);
+  return result;
 }
 
 
@@ -248,6 +293,7 @@ ct_code(void *param)
 	comm_data.communication_type = INI;
 	comm_data.args_count = num_resources+1;
 	comm_data.args = malloc(comm_data.args_count * sizeof(int));
+	if (comm_data.args == NULL) exit(-1);
 	comm_data.args[0] = ct->id;
 	//Initialize resource allocation (INI)
 	for (int i = 0; i < num_resources; i++) {
@@ -256,7 +302,16 @@ ct_code(void *param)
 	write_communication(socket_w, &comm_data);
 	struct communication_data ini_data_r;
 	read_communication(socket_r, socket_w, &ini_data_r);
-	
+	if (ini_data_r.communication_type != ACK) {
+	  printf("Erreur lors de l'init du client");
+      free(comm_data.args);
+	  free(ini_data_r.args);
+	  fclose(socket_r);
+	  fclose(socket_w);
+	  return NULL;
+	}
+	free(comm_data.args);
+	free(ini_data_r.args);
   // TP2 TODO:END
 	
   for (unsigned int request_id = 0; request_id < num_request_per_client;
@@ -268,7 +323,8 @@ ct_code(void *param)
     // le protocole d'envoi de requête.
 
 	  //modified send_request to return the wait seconds value
-	  int sleepValue = send_request(ct->id, request_id, socket_fd, socket_r, socket_w, ct);
+	  int sleepValue = send_request(ct->id, request_id, socket_fd, socket_r, 
+	                                socket_w, ct);
 	  if (sleepValue != 0) {
 		  request_id--;
 		  sleep(sleepValue);
@@ -290,6 +346,7 @@ ct_code(void *param)
   data_clo.communication_type = CLO;
   data_clo.args_count = 1;
   data_clo.args = malloc(sizeof(int));
+  if (data_clo.args == NULL) exit(-1);
   data_clo.args[0] = ct->id;
   write_communication(socket_w, &data_clo);
 
@@ -297,14 +354,22 @@ ct_code(void *param)
   if (data_clo_ack.communication_type == ACK) {
 	  pthread_mutex_lock(&mutex);
 	  count_dispatched++;
+	  count--;
 	  pthread_mutex_unlock(&mutex);
 
 	  fclose(socket_r);
 	  fclose(socket_w);
-
-	  pthread_exit(NULL);
+  }
+  else {
+    printf("Erreur lors de la fermeture du client");
   }
 
+  free(data_clo_ack.args);
+  free(data_clo.args);
+  free(ct->maxResources);
+  free(ct->allocatedResources);
+  
+  pthread_exit(NULL);
   return NULL;
 }
 
@@ -322,7 +387,18 @@ ct_wait_server (client_thread * ct, int nbClients)
 	printf("\n\nct_wait_server flag %d", i);
 	pthread_join(ct[i].pt_tid, NULL);
   }
-  endServer();
+  int client_count;
+  pthread_mutex_lock(&mutex);
+  client_count = count;
+  pthread_mutex_unlock(&mutex);
+  if(client_count == 0)
+  {
+    printf("\n\nServer successful for %i", ct->id);
+	endServer();
+  }
+  else {
+	  printf("\n\nTrying to close server while client(s) are still open");
+  }
 }
 
 
@@ -332,14 +408,17 @@ ct_init (client_thread * ct)
   ct->id = count++;
   //Added to ct
   ct->maxResources = malloc(num_resources * sizeof(int));
+  if (ct->maxResources == NULL) exit(-1);
   ct->allocatedResources = malloc(num_resources * sizeof(int));
+  if (ct->allocatedResources == NULL) exit(-1);
   for (int i = 0; i < num_resources; i++) {
 	  ct->maxResources[i] = (random() % (provisioned_resources[i] + 1) - 1);
 	  if (ct->maxResources[i] < 0) {
 		  ct->maxResources[i] = 0;
 	  }
 	  ct->allocatedResources[i] = 0;
-	  printf("\n\nmaxR: %d, proR %d\n\n", ct->maxResources[i], provisioned_resources[i]);
+	  printf("\n\nmaxR: %d, proR %d\n\n", ct->maxResources[i], 
+	         provisioned_resources[i]);
   }
 }
 
@@ -379,8 +458,13 @@ st_print_results (FILE * fd, bool verbose)
 /***** MESSAGE COMMUNICATION PART *****/
 
 //Reads server replies
-void read_communication(FILE * socket_r, FILE * socket_w, struct communication_data * data) {
-	setup_communication_data(socket_r, socket_w, data);
+void read_communication(FILE * socket_r, FILE * socket_w, 
+                        struct communication_data * data) {
+	if(!setup_communication_data(socket_r, socket_w, data))
+	{
+		//Parse Error
+		printf("Error onServerRequestParsing");
+	}
 }
 
 //Writes to server
@@ -423,30 +507,38 @@ void write_beg(FILE * socket_w, int arg) {
 }
 
 //Set the data up for lecture
-void setup_communication_data(FILE * socket_r, FILE * socket_w, struct communication_data * data) {
+bool setup_communication_data(FILE * socket_r, FILE * socket_w, 
+                              struct communication_data * data) {
 
-	char comm_type[5];
+	char comm_type[4];
 	//Reads the communication_type
 
-	fscanf(socket_r, "%s", comm_type);
+	fscanf(socket_r, "%4s", comm_type);
 	fgetc(socket_r);
 
 	if (strcmp(comm_type, "ACK") == 0) {
 		data->communication_type = ACK;
 		data->args_count = 0;
+		data->args = NULL;
+		return true;
 	}
 	else if (strcmp(comm_type, "ERR") == 0) {
 		data->communication_type = ERR;
 		data->args_count = 0;
 		char buffer[256];
 		printf("\n\n");
-		printf(fgets(buffer, 256, socket_r));
+		printf("%s", fgets(buffer, 256, socket_r));
 		printf("\n\n");
+		data->args = NULL;
+		return true;
 	}
 	else if (strcmp(comm_type, "WAIT") == 0) {
 		data->communication_type = WAIT;
 		data->args = malloc(sizeof(int));
+		if (data->args == NULL) exit(-1);
 		fscanf(socket_r, "%d", &data->args[0]);
 		data->args_count = 1;
+		return true;
 	}
+	return false;
 }

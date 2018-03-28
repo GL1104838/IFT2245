@@ -21,11 +21,13 @@ struct server_thread
 
 struct bankersArray
 {
+  int clientID;
 	int * allocatedResources;
 	int * maxResources;
 	bool visited;
 };
 
+void write_errorMessage(FILE *, char *);
 void st_open_socket (int port_number);
 void st_init (int);
 void st_process_request (server_thread *, int);
@@ -33,4 +35,6 @@ bool st_signal (FILE *, server_thread *); //changed st_signal
 void *st_code (void *);
 //void st_create_and_start(st);
 void st_print_results (FILE *, bool);
+bool banker(int*, int*);
+bool isAvailable(int*,int*);
 #endif

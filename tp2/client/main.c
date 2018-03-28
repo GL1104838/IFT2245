@@ -6,8 +6,8 @@ int
 main(int argc, char *argv[])
 {
 	if (argc < 5) {
-		fprintf(stderr, "Usage: %s <port-nb> <nb-clients> <nb-requests> <resources>...\n",
-			argv[0]);
+		fprintf(stderr, "Usage: %s <port-nb> <nb-clients> <nb-requests> 
+		<resources>...\n", argv[0]);
 		exit(1);
 	}
 
@@ -48,5 +48,8 @@ main(int argc, char *argv[])
   st_print_results (fp, false);
   fclose(fp);
 
+  free(client_threads);
+	free(provisioned_resources);
+	
   return EXIT_SUCCESS;
 }
