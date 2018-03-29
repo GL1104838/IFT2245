@@ -367,8 +367,8 @@ st_process_requests (server_thread * st, int socket_fd)
 		  }
 		  else {
 			  write_errorMessage(socket_w, 
-				  "La commande CLO a été appelée avant la libération 
-				  de toutes les ressources.");
+				  "La commande CLO a été appelée avant la libération de toutes les ressources."
+					);
 				count_invalid++;
 				pthread_mutex_unlock(&mutex);
 			}
