@@ -6,8 +6,7 @@ int
 main(int argc, char *argv[])
 {
 	if (argc < 5) {
-		fprintf(stderr, "Usage: %s <port-nb> <nb-clients> <nb-requests> 
-		<resources>...\n", argv[0]);
+		fprintf(stderr, "Usage: %s <port-nb> <nb-clients> <nb-requests> <resources>...\n", argv[0]);
 		exit(1);
 	}
 
