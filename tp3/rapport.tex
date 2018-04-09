@@ -1,0 +1,24 @@
+\documentclass{article}
+
+\usepackage[utf8]{inputenc}
+
+\title{Travail pratique \#3 - IFT-2245}
+\author{Kevin Belisle et Gabriel Lemyre}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+L'objectif de ce travail était de nous familiariser avec l'implémentation des gestionnaires de mémoire virtuelle. Nous devions programmer en C un une structure de pagination comprenant un TLB et simuler les accès de lecture et d'écriture mémoire selon cette structure. Nous disposions d'un fichier texte \textit{backing store} simulant la banque de mémoire.
+
+\section{Conceptualisation}
+Notre conceptualisation initiale utilisait l'algorithme \textit{Least Recently Used}, que nous avons éventuellement changé pour une queue \textit{FIFO} afin d'effectuer une implémentation et un debugging plus rapide et plus aisé (puisque nous sommes tous deux sous Windows principalement). La plupart des méthodes demandées étant triviales à implémenter, notre conceptualisation s'arrête sur la fonction \textit{getFrame}. Cette fonction est basée principalement sur le page 441 du livre et fût conceptualisée ainsi.
+
+\section{Difficultés}
+Le débugging souffrant de plusieurs lacunes majeures sur les machines que nous utilisions, il nous a fallu plusieurs tentatives pour réussir l'implémentation correcte de \textit{getFrame} dans \textit{vmm.c}. Nous n'avions pas compris parfaitement l'utilité de la fonction readonly et éventuellement nous l'avons confondu avec le \textit{dirty bit}, ce qui nous a aussi causé plusieurs problèmes.\\\\
+Un autre aspect problématique fut l'implémentation de l'écriture à une position spécifique d'un fichier texte. L'implémentation de la lecture ne nous a pas causé tant de problèmes, mais l'écriture était ardue jusqu'à ce que nous découvrions la fonction \textit{fseek} qui nous a beaucoup aidé.
+ 
+
+\end{document}
